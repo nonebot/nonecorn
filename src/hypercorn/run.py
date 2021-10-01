@@ -4,6 +4,7 @@ import platform
 import random
 import signal
 import time
+import multiprocessing
 from multiprocessing import Event, Process
 from typing import Any
 
@@ -11,6 +12,8 @@ from .config import Config
 from .typing import WorkerFunc
 from .utils import write_pid_file
 
+multiprocessing.allow_connection_pickling()
+spawn = multiprocessing.get_context("spawn")
 
 def run(config: Config) -> None:
     if config.pid_path is not None:
@@ -54,7 +57,7 @@ def run_multiple(config: Config, worker_func: WorkerFunc) -> None:
     shutdown_event = Event()
 
     for _ in range(config.workers):
-        process = Process(
+        process = spawn.Process(
             target=worker_func,
             kwargs={"config": config, "shutdown_event": shutdown_event, "sockets": sockets},
         )
