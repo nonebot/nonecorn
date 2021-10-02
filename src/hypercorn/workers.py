@@ -47,8 +47,9 @@ class HypercornAsyncioWorker(Worker):
                 "keyfile": self.cfg.ssl_options.get("keyfile"),
                 "certfile": self.cfg.ssl_options.get("certfile"),
                 "ca_certs": self.cfg.ssl_options.get("ca_certs"),
-                "ciphers": self.cfg.ssl_options.get("ciphers")
             }
+            if self.cfg.ssl_options.get("ciphers") is not None:
+                ssl_kwargs.update(ciphers=self.cfg.ssl_options.get("ciphers"))
             config_kwargs.update(ssl_kwargs)
 
         if self.cfg.settings["backlog"].value:
