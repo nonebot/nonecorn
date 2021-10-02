@@ -39,8 +39,19 @@ class HypercornAsyncioWorker(Worker):
         config_kwargs = {
             "access_log_format": self.cfg.access_log_format,
             "accesslog": self.cfg.accesslog,
-            "loglevel": self.cfg.loglevel.upper()
+            "loglevel": self.cfg.loglevel.upper(),
+            "errorlog": self.cfg.errorlog,
+            "logconfig": self.cfg.logconfig,
+            "keep_alive_timeout": self.cfg.keepalive,
+            "graceful_timeout": self.cfg.graceful_timeout,
+            "group": self.cfg.group,
+            "dogstatsd_tags": self.cfg.dogstatsd_tags,
+            "statsd_host":self.cfg.statsd_host,
+            "statsd_prefix":self.cfg.statsd_prefix,
+            "umask": self.cfg.umask,
+            "user": self.cfg.user
         }
+        config_kwargs.update(logconfig_dict=self.cfg.logconfig_dict if self.cfg.logconfig_dict else None)
 
         if self.cfg.is_ssl:
             ssl_kwargs = {
