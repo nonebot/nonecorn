@@ -11,6 +11,7 @@ from aioquic.quic.events import QuicEvent
 from .events import (
     Body,
     Data,
+    ZeroCopySend as StreamZeroCopySend,
     EndBody,
     EndData,
     Event as StreamEvent,
@@ -70,6 +71,8 @@ class H3Protocol:
         elif isinstance(event, (Body, Data)):
             self.connection.send_data(event.stream_id, event.data, False)
             await self.send()
+        elif isinstance(event, StreamZeroCopySend):
+            pass  # todo??
         elif isinstance(event, (EndBody, EndData)):
             self.connection.send_data(event.stream_id, b"", True)
             await self.send()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,13 @@ class Request(Event):
 @dataclass(frozen=True)
 class Body(Event):
     data: bytes
+
+
+@dataclass(frozen=True)
+class ZeroCopySend(Event):
+    file: int
+    offset: Optional[int] = None
+    count: Optional[int] = None
 
 
 @dataclass(frozen=True)

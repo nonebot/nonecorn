@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 import asyncio
-from typing import Any, Callable, cast, Generator, Optional
+from typing import Any, Callable, cast, Generator, Optional, IO
 
 from .context import Context
 from .task_group import TaskGroup
 from ..config import Config
-from ..events import Closed, Event, RawData, Updated
+from ..events import Closed, Event, RawData, ZeroCopySend, Updated
 from ..protocol import ProtocolWrapper
 from ..typing import ASGIFramework
 from ..utils import parse_socket_addr
@@ -30,12 +31,12 @@ class EventWrapper:
 
 class TCPServer:
     def __init__(
-        self,
-        app: ASGIFramework,
-        loop: asyncio.AbstractEventLoop,
-        config: Config,
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
+            self,
+            app: ASGIFramework,
+            loop: asyncio.AbstractEventLoop,
+            config: Config,
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
     ) -> None:
         self.app = app
         self.config = config
@@ -43,6 +44,8 @@ class TCPServer:
         self.protocol: ProtocolWrapper
         self.reader = reader
         self.writer = writer
+        # Set the buffer to 0 to avoid the problem of sending file before headers.
+        self.writer.transport.set_write_buffer_limits(0)
         self.send_lock = asyncio.Lock()
         self.timeout_lock = asyncio.Lock()
 
@@ -92,6 +95,8 @@ class TCPServer:
                     await self.writer.drain()
                 except ConnectionError:
                     await self.protocol.handle(Closed())
+        elif isinstance(event, ZeroCopySend):
+            await self.zerocopysend(event.file, event.offset, event.count)
         elif isinstance(event, Closed):
             await self._close()
             await self.protocol.handle(Closed())
@@ -99,15 +104,25 @@ class TCPServer:
             pass  # Triggers the keep alive timeout update
         await self._update_keep_alive_timeout()
 
+    async def zerocopysend(self, file: IO[bytes], offset: Optional[int] = None, count: Optional[int] = None) -> None:
+        if offset is None:
+            offset = os.lseek(file.fileno(), 0, os.SEEK_CUR)
+        if count is None:
+            count = os.stat(file.fileno()).st_size - offset
+        try:
+            await self.loop.sendfile(self.writer.transport, file, offset, count)
+        except (NotImplementedError, AttributeError):
+            os.sendfile(self.writer.transport.get_extra_info("socket").fileno(), file.fileno(), offset, count)
+
     async def _read_data(self) -> None:
         while True:
             try:
                 data = await self.reader.read(MAX_RECV)
             except (
-                ConnectionError,
-                OSError,
-                asyncio.TimeoutError,
-                TimeoutError,
+                    ConnectionError,
+                    OSError,
+                    asyncio.TimeoutError,
+                    TimeoutError,
             ):
                 await self.protocol.handle(Closed())
                 break

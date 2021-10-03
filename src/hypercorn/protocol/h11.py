@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from itertools import chain
 from typing import Awaitable, Callable, Optional, Tuple, Union
 
@@ -7,6 +8,7 @@ import h11
 
 from .events import (
     Body,
+    ZeroCopySend as StreamZeroCopySend,
     Data,
     EndBody,
     EndData,
@@ -18,10 +20,20 @@ from .events import (
 from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
-from ..events import Closed, Event, RawData, Updated
+from ..events import Closed, Event, RawData, ZeroCopySend, Updated
 from ..typing import ASGIFramework, Context, H11SendableEvent
 
 STREAM_ID = 1
+
+
+class SendfileData:
+    def __init__(self, file, offset, count):
+        self.file = file
+        self.offset = offset
+        self.count = count
+
+    def __len__(self):
+        return self.count
 
 
 class H2CProtocolRequired(Exception):
@@ -73,14 +85,14 @@ class H11WSConnection:
 
 class H11Protocol:
     def __init__(
-        self,
-        app: ASGIFramework,
-        config: Config,
-        context: Context,
-        ssl: bool,
-        client: Optional[Tuple[str, int]],
-        server: Optional[Tuple[str, int]],
-        send: Callable[[Event], Awaitable[None]],
+            self,
+            app: ASGIFramework,
+            config: Config,
+            context: Context,
+            ssl: bool,
+            client: Optional[Tuple[str, int]],
+            server: Optional[Tuple[str, int]],
+            send: Callable[[Event], Awaitable[None]],
     ) -> None:
         self.app = app
         self.can_read = context.event_class()
@@ -128,6 +140,22 @@ class H11Protocol:
                 )
         elif isinstance(event, Body):
             await self._send_h11_event(h11.Data(data=event.data))
+        elif isinstance(event, StreamZeroCopySend):
+            if event.offset is None:
+                offset = os.lseek(event.file, 0, os.SEEK_CUR)
+            else:
+                offset = event.offset
+            if event.count is None:
+                count = os.stat(event.file).st_size - offset
+            else:
+                count = event.count
+            with os.fdopen(os.dup(event.file), "rb") as file:
+                event_ = SendfileData(file, offset, count)
+                for data in self.connection.send_with_data_passthrough(h11.Data(data=event_)):
+                    if isinstance(data, SendfileData):
+                        await self.send(ZeroCopySend(file=file, offset=offset, count=count))
+                    else:
+                        await self.send(RawData(data=data))
         elif isinstance(event, EndBody):
             await self._send_h11_event(h11.EndOfMessage())
         elif isinstance(event, Data):
@@ -185,9 +213,9 @@ class H11Protocol:
 
         connection_tokens = connection_value.lower().split(",")
         if (
-            any(token.strip() == "upgrade" for token in connection_tokens)
-            and upgrade_value.lower() == "websocket"
-            and request.method.decode("ascii").upper() == "GET"
+                any(token.strip() == "upgrade" for token in connection_tokens)
+                and upgrade_value.lower() == "websocket"
+                and request.method.decode("ascii").upper() == "GET"
         ):
             self.stream = WSStream(
                 self.app,
@@ -283,7 +311,7 @@ class H11Protocol:
                 h11.InformationalResponse(
                     status_code=101,
                     headers=self.config.response_headers("h11")
-                    + [(b"connection", b"upgrade"), (b"upgrade", b"h2c")],
+                            + [(b"connection", b"upgrade"), (b"upgrade", b"h2c")],
                 )
             )
             raise H2CProtocolRequired(self.connection.trailing_data[0], event)

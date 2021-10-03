@@ -11,6 +11,7 @@ import priority
 from .events import (
     Body,
     Data,
+    ZeroCopySend as StreamZeroCopySend,
     EndBody,
     EndData,
     Event as StreamEvent,
@@ -21,7 +22,7 @@ from .events import (
 from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
-from ..events import Closed, Event, RawData, Updated
+from ..events import Closed, Event, RawData, ZeroCopySend, Updated
 from ..typing import ASGIFramework, Context, Event as IOEvent
 from ..utils import filter_pseudo_headers
 
@@ -78,14 +79,14 @@ class StreamBuffer:
 
 class H2Protocol:
     def __init__(
-        self,
-        app: ASGIFramework,
-        config: Config,
-        context: Context,
-        ssl: bool,
-        client: Optional[Tuple[str, int]],
-        server: Optional[Tuple[str, int]],
-        send: Callable[[Event], Awaitable[None]],
+            self,
+            app: ASGIFramework,
+            config: Config,
+            context: Context,
+            ssl: bool,
+            client: Optional[Tuple[str, int]],
+            server: Optional[Tuple[str, int]],
+            send: Callable[[Event], Awaitable[None]],
     ) -> None:
         self.app = app
         self.client = client
@@ -120,7 +121,7 @@ class H2Protocol:
         return len(self.streams) == 0 or all(stream.idle for stream in self.streams.values())
 
     async def initiate(
-        self, headers: Optional[List[Tuple[bytes, bytes]]] = None, settings: Optional[str] = None
+            self, headers: Optional[List[Tuple[bytes, bytes]]] = None, settings: Optional[str] = None
     ) -> None:
         if settings is not None:
             self.connection.initiate_upgrade_connection(settings)
@@ -204,6 +205,10 @@ class H2Protocol:
                 self.priority.unblock(event.stream_id)
                 await self.has_data.set()
                 await self.stream_buffers[event.stream_id].push(event.data)
+            elif isinstance(event, StreamZeroCopySend):
+                self.priority.unblock(event.stream_id)
+                await self.has_data.set()
+                await self.send(ZeroCopySend(file=event.file,offset=event.offset,count=event.count))
             elif isinstance(event, (EndBody, EndData)):
                 self.stream_buffers[event.stream_id].set_complete()
                 self.priority.unblock(event.stream_id)
@@ -215,10 +220,10 @@ class H2Protocol:
             elif isinstance(event, Request):
                 await self._create_server_push(event.stream_id, event.raw_path, event.headers)
         except (
-            BufferCompleteError,
-            KeyError,
-            priority.MissingStreamError,
-            h2.exceptions.ProtocolError,
+                BufferCompleteError,
+                KeyError,
+                priority.MissingStreamError,
+                h2.exceptions.ProtocolError,
         ):
             # Connection has closed whilst blocked on flow control or
             # connection has advanced ahead of the last emitted event.
@@ -333,7 +338,7 @@ class H2Protocol:
         )
 
     async def _create_server_push(
-        self, stream_id: int, path: bytes, headers: List[Tuple[bytes, bytes]]
+            self, stream_id: int, path: bytes, headers: List[Tuple[bytes, bytes]]
     ) -> None:
         push_stream_id = self.connection.get_next_available_stream_id()
         request_headers = [(b":method", b"GET"), (b":path", path)]

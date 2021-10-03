@@ -89,6 +89,14 @@ class HTTPServerPushEvent(TypedDict):
     headers: Iterable[Tuple[bytes, bytes]]
 
 
+class HTTPZeroCopySendEvent(TypedDict):
+    type: Literal["http.response.zerocopysend"]
+    file: int
+    offset: Optional[int]
+    count: Optional[int]
+    more_body: bool
+
+
 class HTTPDisconnectEvent(TypedDict):
     type: Literal["http.disconnect"]
 
@@ -173,11 +181,11 @@ ASGIReceiveEvent = Union[
     LifespanShutdownEvent,
 ]
 
-
 ASGISendEvent = Union[
     HTTPResponseStartEvent,
     HTTPResponseBodyEvent,
     HTTPServerPushEvent,
+    HTTPZeroCopySendEvent,
     HTTPDisconnectEvent,
     WebsocketAcceptEvent,
     WebsocketSendEvent,
@@ -189,7 +197,6 @@ ASGISendEvent = Union[
     LifespanShutdownCompleteEvent,
     LifespanShutdownFailedEvent,
 ]
-
 
 ASGIReceiveCallable = Callable[[], Awaitable[ASGIReceiveEvent]]
 ASGISendCallable = Callable[[ASGISendEvent], Awaitable[None]]
@@ -233,11 +240,11 @@ class H2SyncStream(Protocol):
         ...
 
     async def handle_request(
-        self,
-        event: h2.events.RequestReceived,
-        scheme: str,
-        client: Tuple[str, int],
-        server: Tuple[str, int],
+            self,
+            event: h2.events.RequestReceived,
+            scheme: str,
+            client: Tuple[str, int],
+            server: Tuple[str, int],
     ) -> None:
         ...
 
@@ -258,11 +265,11 @@ class H2AsyncStream(Protocol):
         ...
 
     async def handle_request(
-        self,
-        event: h2.events.RequestReceived,
-        scheme: str,
-        client: Tuple[str, int],
-        server: Tuple[str, int],
+            self,
+            event: h2.events.RequestReceived,
+            scheme: str,
+            client: Tuple[str, int],
+            server: Tuple[str, int],
     ) -> None:
         ...
 
@@ -285,11 +292,11 @@ class Context(Protocol):
     event_class: Type[Event]
 
     async def spawn_app(
-        self,
-        app: ASGIFramework,
-        config: Config,
-        scope: Scope,
-        send: Callable[[Optional[ASGISendEvent]], Awaitable[None]],
+            self,
+            app: ASGIFramework,
+            config: Config,
+            scope: Scope,
+            send: Callable[[Optional[ASGISendEvent]], Awaitable[None]],
     ) -> Callable[[ASGIReceiveEvent], Awaitable[None]]:
         ...
 
