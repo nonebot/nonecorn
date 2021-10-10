@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from enum import auto, Enum
 from time import time
@@ -7,15 +8,10 @@ from typing import Awaitable, Callable, Optional, Tuple
 from urllib.parse import unquote
 
 from .events import Body, ZeroCopySend, EndBody, Event, Request, Response, StreamClosed
+from .sendfile import can_sendfile
 from ..config import Config
 from ..typing import ASGIFramework, ASGISendEvent, Context, HTTPResponseStartEvent, HTTPScope
 from ..utils import build_and_validate_headers, suppress_body, UnexpectedMessage, valid_server_name
-
-try:
-    os.sendfile
-    HAS_SENDFILE = True
-except AttributeError:
-    HAS_SENDFILE = False
 
 PUSH_VERSIONS = {"2", "3"}
 
@@ -82,7 +78,7 @@ class HTTPStream:
             }
             if event.http_version in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.push"] = {}
-            if HAS_SENDFILE:
+            if can_sendfile(asyncio.get_event_loop(), self.scheme == "https"):
                 self.scope["extensions"]["http.response.zerocopysend"] = {}
 
             if valid_server_name(self.config, event):

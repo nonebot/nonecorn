@@ -8,7 +8,7 @@ from .context import Context
 from .task_group import TaskGroup
 from ..config import Config
 from ..events import Closed, Event, RawData, ZeroCopySend, Updated
-from ..protocol import ProtocolWrapper
+from ..protocol import ProtocolWrapper, can_sendfile, is_ssl
 from ..typing import ASGIFramework
 from ..utils import parse_socket_addr
 
@@ -45,7 +45,8 @@ class TCPServer:
         self.reader = reader
         self.writer = writer
         # Set the buffer to 0 to avoid the problem of sending file before headers.
-        self.writer.transport.set_write_buffer_limits(0)
+        if can_sendfile(loop, is_ssl(writer.transport)):
+            self.writer.transport.set_write_buffer_limits(0)
         self.send_lock = asyncio.Lock()
         self.timeout_lock = asyncio.Lock()
 
@@ -111,7 +112,7 @@ class TCPServer:
             count = os.stat(file.fileno()).st_size - offset
         try:
             await self.loop.sendfile(self.writer.transport, file, offset, count)
-        except (NotImplementedError, AttributeError):
+        except (NotImplementedError, AttributeError):  # for uvloop
             os.sendfile(self.writer.transport.get_extra_info("socket").fileno(), file.fileno(), offset, count)
 
     async def _read_data(self) -> None:

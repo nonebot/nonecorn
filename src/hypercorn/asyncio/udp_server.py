@@ -6,6 +6,7 @@ from typing import Any, cast, Optional, Tuple, IO, TYPE_CHECKING
 
 from .context import Context
 from .task_group import TaskGroup
+from ..protocol import can_sendfile, is_ssl
 from ..config import Config
 from ..events import Closed, Event, RawData, ZeroCopySend
 from ..typing import ASGIFramework
@@ -31,7 +32,8 @@ class UDPServer(asyncio.DatagramProtocol):
         # h3/Quic is an optional part of Hypercorn
         from ..protocol.quic import QuicProtocol  # noqa: F811
         # Set the buffer to 0 to avoid the problem of sending file before headers.
-        transport.set_write_buffer_limits(0)
+        if can_sendfile(self.loop, is_ssl(transport)):
+            transport.set_write_buffer_limits(0)
         self.transport = transport
         socket = self.transport.get_extra_info("socket")
         server = parse_socket_addr(socket.family, socket.getsockname())
