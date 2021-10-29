@@ -31,7 +31,12 @@ from ..typing import (
     WebsocketResponseStartEvent,
     WebsocketScope,
 )
-from ..utils import build_and_validate_headers, suppress_body, UnexpectedMessage, valid_server_name
+from ..utils import (
+    build_and_validate_headers,
+    suppress_body,
+    UnexpectedMessageError,
+    valid_server_name,
+)
 
 
 class ASGIWebsocketState(Enum):
@@ -44,7 +49,7 @@ class ASGIWebsocketState(Enum):
     HTTPCLOSED = auto()
 
 
-class FrameTooLarge(Exception):
+class FrameTooLargeError(Exception):
     pass
 
 
@@ -132,7 +137,7 @@ class WebsocketBuffer:
                 self.value = BytesIO()
         self.length += self.value.write(event.data)
         if self.length > self.max_length:
-            raise FrameTooLarge()
+            raise FrameTooLargeError()
 
     def clear(self) -> None:
         self.value = None
@@ -277,14 +282,14 @@ class WSStream:
                 )
                 await self.send(EndData(stream_id=self.stream_id))
             else:
-                raise UnexpectedMessage(self.state, message["type"])
+                raise UnexpectedMessageError(self.state, message["type"])
 
     async def _handle_events(self) -> None:
         for event in self.connection.events():
             if isinstance(event, Message):
                 try:
                     self.buffer.extend(event)
-                except FrameTooLarge:
+                except FrameTooLargeError:
                     await self._send_wsproto_event(
                         CloseConnection(code=CloseReason.MESSAGE_TOO_BIG)
                     )
