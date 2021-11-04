@@ -21,7 +21,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../'))
 
-from hypercorn.__about__ import __version__
+from importlib.metadata import version as meta_version
 
 # -- General configuration ------------------------------------------------
 
@@ -47,7 +47,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = 'Hypercorn'
+project = 'nonecorn'
 copyright = '2018 - 2020 Philip Jones'
 author = 'Philip Jones'
 
@@ -56,7 +56,7 @@ author = 'Philip Jones'
 # built documents.
 #
 # The short X.Y version.
-version = __version__
+version = meta_version("nonecorn")
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -92,10 +92,17 @@ html_logo = "_static/logo_small.png"
 # documentation.
 #
 html_theme_options = {
-  "external_links": [
-      {"name": "Source code", "url": "https://gitlab.com/pgjones/hypercorn"},
-      {"name": "Issues", "url": "https://gitlab.com/pgjones/hypercorn/issues"},
-  ]
+    "external_links": [
+        {"name": "Source code", "url": "https://gitlab.com/pgjones/hypercorn"},
+        {"name": "Issues", "url": "https://gitlab.com/pgjones/hypercorn/issues"},
+    ],
+    "icon_links": [
+        {
+            "name": "GitLab",
+            "url": "https://gitlab.com/pgjones/hypercorn",
+            "icon": "fab fa-gitlab",
+        },
+    ],
 }
 
 # html_sidebars = {}

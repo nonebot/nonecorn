@@ -1,5 +1,55 @@
-[build-system]
-requires = ["setuptools", "wheel"]
+[tool.poetry]
+name = "nonecorn"
+version = "0.11.2rc6"
+description = "A ASGI Server based on Hyper libraries and inspired by Gunicorn"
+authors = ["pgjones <philip.graham.jones@googlemail.com>"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+include = ["src/hypercorn/py.typed"]
+license = "MIT"
+readme = "README.rst"
+repository = "https://gitlab.com/synodriver/hypercorn/"
+documentation = "https://pgjones.gitlab.io/hypercorn/"
+
+[tool.poetry.dependencies]
+python = ">=3.7"
+aioquic = { version = ">= 0.9.0, < 1.0", optional = true }
+h11 = "*"
+h2 = ">=3.1.0"
+priority = "*"
+toml = "*"
+trio = { version = ">=0.11.0", optional = true }
+typing_extensions = { version = ">=3.7.4", python = "<3.8" }
+uvloop = { version = "*", markers = "platform_system != 'Windows'", optional = true }
+wsproto = ">=0.14.0"
+
+[tool.poetry.dev-dependencies]
+hypothesis = "*"
+mock = "*"
+pytest = "*"
+pytest-asyncio = "*"
+pytest-trio = "*"
+trio = "*"
+
+[tool.poetry.scripts]
+hypercorn = "hypercorn.__main__:main"
+
+[tool.poetry.extras]
+h3 = ["aioquic"]
+trio = ["trio"]
+uvloop = ["uvloop"]
 
 [tool.black]
 line-length = 100
@@ -10,7 +60,6 @@ combine_as_imports = true
 force_grid_wrap = 0
 include_trailing_comma = true
 known_first_party = "hypercorn, tests"
-known_third_party = "_pytest, aioquic, cryptography, h11, h2, pytest, trio, typing_extensions, wsproto"
 line_length = 100
 multi_line_output = 3
 no_lines_before = "LOCALFOLDER"
@@ -19,18 +68,29 @@ reverse_relative = true
 
 [tool.mypy]
 allow_redefinition = true
+disallow_any_generics = false
 disallow_subclassing_any = true
+disallow_untyped_calls = false
 disallow_untyped_defs = true
+implicit_reexport = true
+no_implicit_optional = true
+show_error_codes = true
+strict = true
 strict_equality = true
 strict_optional = false
 warn_redundant_casts = true
+warn_return_any = false
 warn_unused_configs = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module =["aioquic.*", "aioredis.*", "cryptography.*", "h11.*", "h2.*", "priority.*", "_pytest.*", "pytest.*", "trio.*", "uvloop.*"]
+module =["aioquic.*", "cryptography.*", "h11.*", "h2.*", "priority.*", "trio.*", "uvloop.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "--no-cov-on-fail --showlocals --strict"
+addopts = "--no-cov-on-fail --showlocals --strict-markers"
 testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
