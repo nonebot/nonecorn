@@ -1,6 +1,7 @@
-from typing import List
+from typing import List, Callable, Awaitable, Any
 import asyncio
 import signal
+from functools import partial
 
 from gunicorn.workers.base import Worker
 from gunicorn.sock import TCPSocket
@@ -46,8 +47,8 @@ class HypercornAsyncioWorker(Worker):
             "graceful_timeout": self.cfg.graceful_timeout,
             "group": self.cfg.group,
             "dogstatsd_tags": self.cfg.dogstatsd_tags,
-            "statsd_host":self.cfg.statsd_host,
-            "statsd_prefix":self.cfg.statsd_prefix,
+            "statsd_host": self.cfg.statsd_host,
+            "statsd_prefix": self.cfg.statsd_prefix,
             "umask": self.cfg.umask,
             "user": self.cfg.user
         }
@@ -81,12 +82,17 @@ class HypercornAsyncioWorker(Worker):
         if self.config.worker_class == "trio":
             from hypercorn.trio import serve as trio_serve
             import trio
-            async def wrap():
-                async with trio.open_nursery() as nursery:
-                    nursery.start_soon(self.trio_callback_notify())
-                    nursery.start_soon(trio_serve(app, self.config))
 
-            trio.run(wrap)
+            async def start():
+                async with trio.open_nursery() as nursery:
+                    async def wrap(func: Callable[[], Awaitable[Any]]) -> None:
+                        await func()
+                        nursery.cancel_scope.cancel()
+
+                    nursery.start_soon(wrap, partial(trio_serve, app, self.config))
+                    await wrap(self.trio_callback_notify)
+
+            trio.run(start)
             return
         if self.config.worker_class == "uvloop":
             import uvloop
