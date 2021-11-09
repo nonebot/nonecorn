@@ -118,7 +118,7 @@ class TCPServer:
     async def _read_data(self) -> None:
         while True:
             try:
-                data = await self.reader.read(MAX_RECV)
+                data = await asyncio.wait_for(self.reader.read(MAX_RECV), self.config.read_timeout)
             except (
                     ConnectionError,
                     OSError,
