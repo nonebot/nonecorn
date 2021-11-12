@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Tuple, Optional
+from dataclasses import dataclass, field
+from typing import List, Tuple, Optional, Iterable
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ class Request(Event):
 @dataclass(frozen=True)
 class Body(Event):
     data: bytes
+    flush: bool = field(default_factory=lambda: False)
 
 
 @dataclass(frozen=True)
@@ -30,13 +31,20 @@ class ZeroCopySend(Event):
 
 
 @dataclass(frozen=True)
+class TrailerHeadersSend(Event):
+    headers: Optional[Iterable[Tuple[bytes, bytes]]] = field(default_factory=list)
+    end_stream: bool = field(default_factory=lambda: True)
+
+
+@dataclass(frozen=True)
 class EndBody(Event):
-    pass
+    headers: Optional[Iterable[Tuple[bytes, bytes]]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class Data(Event):
     data: bytes
+    flush: bool = field(default_factory=lambda: False)
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,7 @@ import h11
 from .events import (
     Body,
     ZeroCopySend as StreamZeroCopySend,
+    TrailerHeadersSend,
     Data,
     EndBody,
     EndData,
@@ -157,7 +158,9 @@ class H11Protocol:
                     else:
                         await self.send(RawData(data=data))
         elif isinstance(event, EndBody):
-            await self._send_h11_event(h11.EndOfMessage())
+            await self._send_h11_event(h11.EndOfMessage(headers=event.headers))
+        elif isinstance(event, TrailerHeadersSend):
+            await self._send_h11_event(h11.EndOfMessage(headers=event.headers))
         elif isinstance(event, Data):
             await self.send(RawData(data=event.data))
         elif isinstance(event, EndData):

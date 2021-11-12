@@ -81,6 +81,7 @@ class HTTPResponseBodyEvent(TypedDict):
     type: Literal["http.response.body"]
     body: bytes
     more_body: bool
+    headers: Optional[Iterable[Tuple[bytes, bytes]]] = None
 
 
 class HTTPServerPushEvent(TypedDict):
@@ -94,7 +95,13 @@ class HTTPZeroCopySendEvent(TypedDict):
     file: int
     offset: Optional[int]
     count: Optional[int]
-    more_body: bool
+    more_body: Optional[bool]
+
+
+class HTTPTrailerHeadersSendEvent(TypedDict):
+    type: Literal["http.trailingheaders.send"]  # todo
+    headers: Iterable[Tuple[bytes, bytes]]
+    more_body: Optional[bool] = False
 
 
 class HTTPDisconnectEvent(TypedDict):
@@ -186,6 +193,7 @@ ASGISendEvent = Union[
     HTTPResponseBodyEvent,
     HTTPServerPushEvent,
     HTTPZeroCopySendEvent,
+    HTTPTrailerHeadersSendEvent,
     HTTPDisconnectEvent,
     WebsocketAcceptEvent,
     WebsocketSendEvent,

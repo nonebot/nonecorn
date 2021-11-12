@@ -12,6 +12,7 @@ from .events import (
     Body,
     Data,
     ZeroCopySend as StreamZeroCopySend,
+    TrailerHeadersSend,
     EndBody,
     EndData,
     Event as StreamEvent,
@@ -202,18 +203,29 @@ class H2Protocol:
                 )
                 await self._flush()
             elif isinstance(event, (Body, Data)):
-                self.priority.unblock(event.stream_id)
-                await self.has_data.set()
-                await self.stream_buffers[event.stream_id].push(event.data)
+                if event.flush:
+                    self.connection.send_data(event.stream_id, event.data)
+                    await self._flush()
+                else:
+                    self.priority.unblock(event.stream_id)
+                    await self.has_data.set()
+                    await self.stream_buffers[event.stream_id].push(event.data)
             elif isinstance(event, StreamZeroCopySend):
                 self.priority.unblock(event.stream_id)
                 await self.has_data.set()
-                await self.send(ZeroCopySend(file=event.file,offset=event.offset,count=event.count))
+                await self.send(ZeroCopySend(file=event.file, offset=event.offset, count=event.count))
             elif isinstance(event, (EndBody, EndData)):
+                if isinstance(event, EndBody) and event.headers:
+                    self.connection.send_headers(event.stream_id, event.headers, end_stream=True) # trailers must have endstream set
+                    await self._flush()
+                    return
                 self.stream_buffers[event.stream_id].set_complete()
                 self.priority.unblock(event.stream_id)
                 await self.has_data.set()
                 await self.stream_buffers[event.stream_id].drain()
+            elif isinstance(event, TrailerHeadersSend):
+                self.connection.send_headers(event.stream_id, event.headers, end_stream=event.end_stream)
+                await self._flush()
             elif isinstance(event, StreamClosed):
                 await self._close_stream(event.stream_id)
                 await self.send(Updated())

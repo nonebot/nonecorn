@@ -7,7 +7,7 @@ from time import time
 from typing import Awaitable, Callable, Optional, Tuple
 from urllib.parse import unquote
 
-from .events import Body, ZeroCopySend, EndBody, Event, Request, Response, StreamClosed
+from .events import Body, ZeroCopySend, TrailerHeadersSend, EndBody, Event, Request, Response, StreamClosed
 from .sendfile import can_sendfile
 from ..config import Config
 from ..typing import ASGIFramework, ASGISendEvent, Context, HTTPResponseStartEvent, HTTPScope
@@ -83,6 +83,7 @@ class HTTPStream:
             }
             if event.http_version in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.push"] = {}
+                self.scope["extensions"]["http.trailingheaders.send"] = {}
             if can_sendfile(asyncio.get_event_loop(), self.scheme == "https"):
                 self.scope["extensions"]["http.response.zerocopysend"] = {}
 
@@ -158,8 +159,8 @@ class HTTPStream:
                         and message.get("body", b"") != b""
                 ):
                     await self.send(
-                        Body(stream_id=self.stream_id, data=bytes(message.get("body", b"")))
-                    )
+                        Body(stream_id=self.stream_id, data=bytes(message.get("body", b"")),
+                             flush=message["meta"].get("flush", False) if "meta" in message else False))
 
                 if not message.get("more_body", False):
                     if self.state != ASGIHTTPState.CLOSED:
@@ -167,7 +168,9 @@ class HTTPStream:
                         await self.config.log.access(
                             self.scope, self.response, time() - self.start_time
                         )
-                        await self.send(EndBody(stream_id=self.stream_id))
+                        await self.send(EndBody(stream_id=self.stream_id,
+                                                headers=message["meta"].get("headers",
+                                                                            []) if "meta" in message else []))
                         await self.send(StreamClosed(stream_id=self.stream_id))
             elif message["type"] == "http.response.zerocopysend" and self.state in {
                 ASGIHTTPState.REQUEST,
@@ -201,9 +204,21 @@ class HTTPStream:
                         await self.config.log.access(
                             self.scope, self.response, time() - self.start_time
                         )
-                        await self.send(EndBody(stream_id=self.stream_id))
+                        await self.send(EndBody(stream_id=self.stream_id,
+                                                headers=message["meta"].get("headers") if "meta" in message else None))
                         await self.send(StreamClosed(stream_id=self.stream_id))
                 pass  # todo add zerocopysend
+            elif message["type"] == "http.trailingheaders.send" and self.state in {
+                ASGIHTTPState.REQUEST,
+                ASGIHTTPState.RESPONSE,
+            }:
+                headers = message.get("headers", [])
+                await self.config.log.access(
+                    self.scope, self.response, time() - self.start_time
+                )
+                await self.send(TrailerHeadersSend(stream_id=self.stream_id,
+                                                   headers=headers,
+                                                   end_stream=not message.get("more_body", False)))
             else:
                 raise UnexpectedMessageError(self.state, message["type"])
 
