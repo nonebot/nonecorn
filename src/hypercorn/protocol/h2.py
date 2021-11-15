@@ -86,6 +86,7 @@ class H2Protocol:
         client: Optional[Tuple[str, int]],
         server: Optional[Tuple[str, int]],
         send: Callable[[Event], Awaitable[None]],
+        tls: Optional[dict] = None
     ) -> None:
         self.app = app
         self.client = client
@@ -114,6 +115,7 @@ class H2Protocol:
         self.has_data = self.context.event_class()
         self.priority = priority.PriorityTree()
         self.stream_buffers: Dict[int, StreamBuffer] = {}
+        self.tls = tls
 
     @property
     def idle(self) -> bool:
@@ -301,6 +303,7 @@ class H2Protocol:
                 self.server,
                 self.stream_send,
                 request.stream_id,
+                self.tls
             )
         else:
             self.streams[request.stream_id] = HTTPStream(
@@ -312,6 +315,7 @@ class H2Protocol:
                 self.server,
                 self.stream_send,
                 request.stream_id,
+                self.tls
             )
         self.stream_buffers[request.stream_id] = StreamBuffer(self.context.event_class)
         try:

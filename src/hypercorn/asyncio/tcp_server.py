@@ -9,7 +9,7 @@ from ..config import Config
 from ..events import Closed, Event, RawData, Updated
 from ..protocol import ProtocolWrapper
 from ..typing import ASGIFramework
-from ..utils import parse_socket_addr
+from ..utils import parse_socket_addr, get_tls_info
 
 MAX_RECV = 2 ** 16
 
@@ -53,6 +53,8 @@ class TCPServer:
 
     async def run(self) -> None:
         socket = self.writer.get_extra_info("socket")
+        tls = None
+
         try:
             client = parse_socket_addr(socket.family, socket.getpeername())
             server = parse_socket_addr(socket.family, socket.getsockname())
@@ -60,6 +62,9 @@ class TCPServer:
             if ssl_object is not None:
                 ssl = True
                 alpn_protocol = ssl_object.selected_alpn_protocol()
+                tls = get_tls_info(self.writer)
+                if tls:
+                    tls["server_cert"] = self.config.cert_pem
             else:
                 ssl = False
                 alpn_protocol = "http/1.1"
@@ -75,6 +80,7 @@ class TCPServer:
                     server,
                     self.protocol_send,
                     alpn_protocol,
+                    tls
                 )
                 await self.protocol.initiate()
                 await self._update_keep_alive_timeout()

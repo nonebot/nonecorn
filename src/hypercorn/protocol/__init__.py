@@ -20,6 +20,7 @@ class ProtocolWrapper:
         server: Optional[Tuple[str, int]],
         send: Callable[[Event], Awaitable[None]],
         alpn_protocol: Optional[str] = None,
+        tls: Optional[dict] = None
     ) -> None:
         self.app = app
         self.config = config
@@ -29,6 +30,7 @@ class ProtocolWrapper:
         self.server = server
         self.send = send
         self.protocol: Union[H11Protocol, H2Protocol]
+        self.tls = tls
         if alpn_protocol == "h2":
             self.protocol = H2Protocol(
                 self.app,
@@ -38,6 +40,7 @@ class ProtocolWrapper:
                 self.client,
                 self.server,
                 self.send,
+                self.tls
             )
         else:
             self.protocol = H11Protocol(
@@ -48,6 +51,7 @@ class ProtocolWrapper:
                 self.client,
                 self.server,
                 self.send,
+                self.tls
             )
 
     @property
