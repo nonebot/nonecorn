@@ -211,9 +211,7 @@ class H2Protocol:
                     await self.has_data.set()
                     await self.stream_buffers[event.stream_id].push(event.data)
             elif isinstance(event, StreamZeroCopySend):
-                self.priority.unblock(event.stream_id)
-                await self.has_data.set()
-                await self.send(ZeroCopySend(file=event.file, offset=event.offset, count=event.count))
+                pass  # https://github.com/nonebot/nonecorn/issues/3
             elif isinstance(event, (EndBody, EndData)):
                 if isinstance(event, EndBody) and event.headers:
                     self.connection.send_headers(event.stream_id, event.headers, end_stream=True) # trailers must have endstream set
