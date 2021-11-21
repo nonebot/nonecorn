@@ -89,7 +89,7 @@ class HypercornAsyncioWorker(Worker):
                         await func()
                         nursery.cancel_scope.cancel()
 
-                    nursery.start_soon(wrap, partial(trio_serve, app, self.config))
+                    nursery.start_soon(wrap, partial(trio_serve, asgi_app, self.config))
                     await wrap(self.trio_callback_notify)
 
             trio.run(start)

@@ -19,7 +19,7 @@ from ssl import (
     VerifyMode,
 )
 from time import time
-from typing import Any, AnyStr, Dict, List, Mapping, Optional, Tuple, Type, Union
+from typing import Any, AnyStr, Dict, List, Mapping, Optional, Tuple, Type, Union, Sequence
 from wsgiref.handlers import format_date_time
 
 import toml
@@ -63,7 +63,7 @@ class Config:
     alt_svc_headers: List[str] = []
     application_path: str
     backlog = 100
-    ca_certs: Optional[str] = None
+    ca_certs: Optional[Union[str, os.PathLike, Sequence[Union[str, os.PathLike]]]] = None
     certfile: Optional[str] = None
     ciphers: str = "ECDHE+AESGCM"
     debug = False
@@ -168,7 +168,11 @@ class Config:
             context.load_cert_chain(certfile=self.certfile, keyfile=self.keyfile)
 
         if self.ca_certs is not None:
-            context.load_verify_locations(self.ca_certs)
+            if isinstance(self.ca_certs, (str, os.PathLike)):
+                context.load_verify_locations(self.ca_certs)
+            else:
+                for ca_cert in self.ca_certs:
+                    context.load_verify_locations(ca_cert)
         if self.verify_mode is not None:
             context.verify_mode = self.verify_mode
         if self.verify_flags is not None:
