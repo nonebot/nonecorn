@@ -8,9 +8,9 @@ from .context import Context
 from .task_group import TaskGroup
 from ..config import Config
 from ..events import Closed, Event, RawData, ZeroCopySend, Updated
-from ..protocol import ProtocolWrapper, can_sendfile, is_ssl
+from ..protocol import ProtocolWrapper
 from ..typing import ASGIFramework
-from ..utils import parse_socket_addr
+from ..utils import parse_socket_addr, can_sendfile, is_ssl
 
 MAX_RECV = 2 ** 16
 
