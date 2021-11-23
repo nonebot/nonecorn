@@ -162,6 +162,7 @@ class WSStream:
         server: Optional[Tuple[str, int]],
         send: Callable[[Event], Awaitable[None]],
         stream_id: int,
+        tls: Optional[dict] = None
     ) -> None:
         self.app = app
         self.app_put: Optional[Callable] = None
@@ -179,6 +180,7 @@ class WSStream:
         self.start_time: float
         self.state = ASGIWebsocketState.HANDSHAKE
         self.stream_id = stream_id
+        self.tls = tls
 
         self.connection: Connection
         self.handshake: Handshake
@@ -209,6 +211,8 @@ class WSStream:
                 "subprotocols": self.handshake.subprotocols or [],
                 "extensions": {"websocket.http.response": {}},
             }
+            if self.scheme == "wss" and self.tls:
+                self.scope["extensions"]["tls"] = self.tls
 
             if not valid_server_name(self.config, event):
                 await self._send_error_response(404)

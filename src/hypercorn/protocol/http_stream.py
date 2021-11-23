@@ -32,15 +32,16 @@ class ASGIHTTPState(Enum):
 
 class HTTPStream:
     def __init__(
-            self,
-            app: ASGIFramework,
-            config: Config,
-            context: Context,
-            ssl: bool,
-            client: Optional[Tuple[str, int]],
-            server: Optional[Tuple[str, int]],
-            send: Callable[[Event], Awaitable[None]],
-            stream_id: int,
+        self,
+        app: ASGIFramework,
+        config: Config,
+        context: Context,
+        ssl: bool,
+        client: Optional[Tuple[str, int]],
+        server: Optional[Tuple[str, int]],
+        send: Callable[[Event], Awaitable[None]],
+        stream_id: int,
+        tls: Optional[dict] = None
     ) -> None:
         self.app = app
         self.client = client
@@ -55,6 +56,7 @@ class HTTPStream:
         self.start_time: float
         self.state = ASGIHTTPState.REQUEST
         self.stream_id = stream_id
+        self.tls = tls
 
     @property
     def idle(self) -> bool:
@@ -83,8 +85,11 @@ class HTTPStream:
             }
             if event.http_version in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.push"] = {}
-            if can_sendfile(asyncio.get_event_loop(), self.scheme == "https"):
+            if can_sendfile(asyncio.get_event_loop(),
+                            self.scheme == "https") and event.http_version not in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.zerocopysend"] = {}
+            if self.scheme == "https" and self.tls:
+                self.scope["extensions"]["tls"] = self.tls
 
             if valid_server_name(self.config, event):
                 self.app_put = await self.context.spawn_app(

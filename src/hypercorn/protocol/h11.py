@@ -85,14 +85,15 @@ class H11WSConnection:
 
 class H11Protocol:
     def __init__(
-            self,
-            app: ASGIFramework,
-            config: Config,
-            context: Context,
-            ssl: bool,
-            client: Optional[Tuple[str, int]],
-            server: Optional[Tuple[str, int]],
-            send: Callable[[Event], Awaitable[None]],
+        self,
+        app: ASGIFramework,
+        config: Config,
+        context: Context,
+        ssl: bool,
+        client: Optional[Tuple[str, int]],
+        server: Optional[Tuple[str, int]],
+        send: Callable[[Event], Awaitable[None]],
+        tls: Optional[dict] = None
     ) -> None:
         self.app = app
         self.can_read = context.event_class()
@@ -105,6 +106,7 @@ class H11Protocol:
         self.send = send
         self.server = server
         self.ssl = ssl
+        self.tls = tls
         self.stream: Optional[Union[HTTPStream, WSStream]] = None
 
     @property
@@ -226,6 +228,7 @@ class H11Protocol:
                 self.server,
                 self.stream_send,
                 STREAM_ID,
+                self.tls
             )
             self.connection = H11WSConnection(self.connection)
         else:
@@ -238,6 +241,7 @@ class H11Protocol:
                 self.server,
                 self.stream_send,
                 STREAM_ID,
+                self.tls
             )
         await self.stream.handle(
             Request(
@@ -245,7 +249,7 @@ class H11Protocol:
                 headers=request.headers,
                 http_version=request.http_version.decode(),
                 method=request.method.decode("ascii").upper(),
-                raw_path=request.target,
+                raw_path=request.target
             )
         )
 

@@ -65,6 +65,7 @@ class Config:
     backlog = 100
     ca_certs: Optional[Union[str, os.PathLike, Sequence[Union[str, os.PathLike]]]] = None
     certfile: Optional[str] = None
+    cert_pem: Optional[str] = None
     ciphers: str = "ECDHE+AESGCM"
     debug = False
     dogstatsd_tags = ""
@@ -316,7 +317,9 @@ class Config:
                 setattr(config, key, value)
             except AttributeError:
                 pass
-
+        if config.certfile is not None:
+            with open(config.certfile) as file:
+                config.cert_pem = file.read()
         return config
 
     @classmethod
