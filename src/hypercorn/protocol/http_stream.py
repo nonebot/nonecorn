@@ -205,7 +205,7 @@ class HTTPStream:
                             self.scope, self.response, time() - self.start_time
                         )
                         await self.send(EndBody(stream_id=self.stream_id,
-                                                headers=message["meta"].get("headers") if "meta" in message else None))
+                                                headers=message["meta"].get("headers") if "meta" in message else []))
                         await self.send(StreamClosed(stream_id=self.stream_id))
                 pass  # todo add zerocopysend
             elif message["type"] == "http.trailingheaders.send" and self.state in {
