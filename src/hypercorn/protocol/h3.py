@@ -12,6 +12,7 @@ from .events import (
     Body,
     Data,
     ZeroCopySend as StreamZeroCopySend,
+    TrailerHeadersSend,
     EndBody,
     EndData,
     Event as StreamEvent,
@@ -28,14 +29,14 @@ from ..utils import filter_pseudo_headers
 
 class H3Protocol:
     def __init__(
-        self,
-        app: ASGIFramework,
-        config: Config,
-        context: Context,
-        client: Optional[Tuple[str, int]],
-        server: Optional[Tuple[str, int]],
-        quic: QuicConnection,
-        send: Callable[[], Awaitable[None]],
+            self,
+            app: ASGIFramework,
+            config: Config,
+            context: Context,
+            client: Optional[Tuple[str, int]],
+            server: Optional[Tuple[str, int]],
+            quic: QuicConnection,
+            send: Callable[[], Awaitable[None]],
     ) -> None:
         self.app = app
         self.client = client
@@ -74,7 +75,15 @@ class H3Protocol:
         elif isinstance(event, StreamZeroCopySend):
             pass  # todo??
         elif isinstance(event, (EndBody, EndData)):
+            if isinstance(event, EndBody) and event.headers is not None:
+                self.connection.send_headers(event.stream_id, event.headers)
             self.connection.send_data(event.stream_id, b"", True)
+            await self.send()
+        elif isinstance(event, TrailerHeadersSend):
+            self.connection.send_headers(
+                event.stream_id,
+                event.headers
+            )
             await self.send()
         elif isinstance(event, StreamClosed):
             pass  # ??
@@ -122,7 +131,7 @@ class H3Protocol:
         )
 
     async def _create_server_push(
-        self, stream_id: int, path: bytes, headers: List[Tuple[bytes, bytes]]
+            self, stream_id: int, path: bytes, headers: List[Tuple[bytes, bytes]]
     ) -> None:
         request_headers = [(b":method", b"GET"), (b":path", path)]
         request_headers.extend(headers)

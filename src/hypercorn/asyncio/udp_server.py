@@ -6,11 +6,10 @@ from typing import Any, cast, Optional, Tuple, IO, TYPE_CHECKING
 
 from .context import Context
 from .task_group import TaskGroup
-from ..protocol import can_sendfile, is_ssl
 from ..config import Config
 from ..events import Closed, Event, RawData, ZeroCopySend
 from ..typing import ASGIFramework
-from ..utils import parse_socket_addr
+from ..utils import parse_socket_addr, can_sendfile, is_ssl
 
 if TYPE_CHECKING:
     # h3/Quic is an optional part of Hypercorn
