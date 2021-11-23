@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from enum import auto, Enum
 from time import time
 from typing import Awaitable, Callable, Optional, Tuple
 from urllib.parse import unquote
 
 from .events import Body, ZeroCopySend, EndBody, Event, Request, Response, StreamClosed
-from .sendfile import can_sendfile
 from ..config import Config
 from ..typing import ASGIFramework, ASGISendEvent, Context, HTTPResponseStartEvent, HTTPScope
 from ..utils import (
@@ -16,6 +14,7 @@ from ..utils import (
     suppress_body,
     UnexpectedMessageError,
     valid_server_name,
+    can_sendfile
 )
 
 PUSH_VERSIONS = {"2", "3"}

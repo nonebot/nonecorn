@@ -4,7 +4,6 @@ from typing import Awaitable, Callable, Optional, Tuple, Union
 
 from .h2 import H2Protocol
 from .h11 import H2CProtocolRequiredError, H2ProtocolAssumedError, H11Protocol
-from .sendfile import can_sendfile, is_ssl
 
 from ..config import Config
 from ..events import Event, RawData

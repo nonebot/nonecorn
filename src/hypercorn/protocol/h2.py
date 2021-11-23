@@ -208,7 +208,7 @@ class H2Protocol:
                 await self.has_data.set()
                 await self.stream_buffers[event.stream_id].push(event.data)
             elif isinstance(event, StreamZeroCopySend):
-                pass  # https://github.com/nonebot/nonecorn/issues/3
+                pass  # https://github.com/python-hyper/h2/issues/236
             elif isinstance(event, (EndBody, EndData)):
                 self.stream_buffers[event.stream_id].set_complete()
                 self.priority.unblock(event.stream_id)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import asyncio
 import platform
 import socket
 import sys
@@ -23,6 +24,11 @@ from typing import (
     Tuple,
     TYPE_CHECKING,
 )
+
+try:
+    from uvloop import Loop
+except ImportError:
+    Loop = None
 
 from .config import Config
 from .typing import (
@@ -335,3 +341,23 @@ def get_tls_info(writer: asyncio.StreamWriter) -> Optional[Dict]:
         ssl_info["cipher_suite"] = list(ssl_object.cipher())
         return ssl_info
     return None
+
+
+def is_ssl(transport: asyncio.Transport) -> bool:
+    return bool(transport.get_extra_info("sslcontext"))
+
+
+def check_uvloop(loop) -> bool:
+    return isinstance(loop, Loop) if Loop else False
+
+
+def can_sendfile(loop: asyncio.AbstractEventLoop, https: bool = False) -> bool:
+    """
+    Judge loop.sendfile available. Uvloop not included.
+    """
+    return sys.version_info[:2] >= (3, 7) and (
+            (
+                    hasattr(asyncio, "ProactorEventLoop")
+                    and isinstance(loop, asyncio.ProactorEventLoop)
+            )
+            or (hasattr(os, "sendfile") and not (check_uvloop(loop) and https)))
