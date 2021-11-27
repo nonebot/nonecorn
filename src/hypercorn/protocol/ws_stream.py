@@ -25,11 +25,12 @@ from ..config import Config
 from ..typing import (
     ASGIFramework,
     ASGISendEvent,
-    Context,
+    TaskGroup,
     WebsocketAcceptEvent,
     WebsocketResponseBodyEvent,
     WebsocketResponseStartEvent,
     WebsocketScope,
+    WorkerContext,
 )
 from ..utils import (
     build_and_validate_headers,
@@ -156,7 +157,8 @@ class WSStream:
         self,
         app: ASGIFramework,
         config: Config,
-        context: Context,
+        context: WorkerContext,
+        task_group: TaskGroup,
         ssl: bool,
         client: Optional[Tuple[str, int]],
         server: Optional[Tuple[str, int]],
@@ -171,6 +173,7 @@ class WSStream:
         self.closed = False
         self.config = config
         self.context = context
+        self.task_group = task_group
         self.response: WebsocketResponseStartEvent
         self.scope: WebsocketScope
         self.send = send
@@ -198,7 +201,7 @@ class WSStream:
             path, _, query_string = event.raw_path.partition(b"?")
             self.scope = {
                 "type": "websocket",
-                "asgi": {"spec_version": "2.1"},
+                "asgi": {"spec_version": "2.3"},
                 "scheme": self.scheme,
                 "http_version": event.http_version,
                 "path": unquote(path.decode("ascii")),
@@ -221,7 +224,7 @@ class WSStream:
                 await self._send_error_response(400)
                 self.closed = True
             else:
-                self.app_put = await self.context.spawn_app(
+                self.app_put = await self.task_group.spawn_app(
                     self.app, self.config, self.scope, self.app_send
                 )
                 await self.app_put({"type": "websocket.connect"})  # type: ignore
@@ -282,7 +285,10 @@ class WSStream:
             elif message["type"] == "websocket.close":
                 self.state = ASGIWebsocketState.CLOSED
                 await self._send_wsproto_event(
-                    CloseConnection(code=int(message.get("code", CloseReason.NORMAL_CLOSURE)))
+                    CloseConnection(
+                        code=int(message.get("code", CloseReason.NORMAL_CLOSURE)),
+                        reason=message.get("reason"),
+                    )
                 )
                 await self.send(EndData(stream_id=self.stream_id))
             else:
@@ -336,7 +342,7 @@ class WSStream:
             self.scope, {"status": status_code, "headers": []}, time() - self.start_time
         )
         if self.config.websocket_ping_interval is not None:
-            self.context.spawn(self._send_pings)
+            self.task_group.spawn(self._send_pings)
 
     async def _send_rejection(self, message: WebsocketResponseBodyEvent) -> None:
         body_suppressed = suppress_body("GET", self.response["status"])

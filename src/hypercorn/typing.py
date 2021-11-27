@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from multiprocessing.synchronize import Event as EventType
+from types import TracebackType
 from typing import Any, Awaitable, Callable, Dict, Iterable, Optional, Tuple, Type, Union
 
 import h2.events
@@ -150,6 +151,7 @@ class WebsocketDisconnectEvent(TypedDict):
 class WebsocketCloseEvent(TypedDict):
     type: Literal["websocket.close"]
     code: int
+    reason: Optional[str]
 
 
 class LifespanStartupEvent(TypedDict):
@@ -296,9 +298,20 @@ class Event(Protocol):
         ...
 
 
-class Context(Protocol):
+class WorkerContext(Protocol):
     event_class: Type[Event]
+    terminated: bool
 
+    @staticmethod
+    async def sleep(wait: Union[float, int]) -> None:
+        ...
+
+    @staticmethod
+    def time() -> float:
+        ...
+
+
+class TaskGroup(Protocol):
     async def spawn_app(
             self,
             app: ASGIFramework,
@@ -311,12 +324,10 @@ class Context(Protocol):
     def spawn(self, func: Callable, *args: Any) -> None:
         ...
 
-    @staticmethod
-    async def sleep(wait: Union[float, int]) -> None:
+    async def __aenter__(self) -> TaskGroup:
         ...
 
-    @staticmethod
-    def time() -> float:
+    async def __aexit__(self, exc_type: type, exc_value: BaseException, tb: TracebackType) -> None:
         ...
 
 

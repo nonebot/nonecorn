@@ -5,7 +5,8 @@ from typing import Any, Callable, Generator, Optional
 
 import trio
 
-from .context import Context
+from .task_group import TaskGroup
+from .worker_context import WorkerContext
 from ..config import Config
 from ..events import Closed, Event, RawData, Updated
 from ..protocol import ProtocolWrapper
@@ -30,9 +31,12 @@ class EventWrapper:
 
 
 class TCPServer:
-    def __init__(self, app: ASGIFramework, config: Config, stream: trio.abc.Stream) -> None:
+    def __init__(
+        self, app: ASGIFramework, config: Config, context: WorkerContext, stream: trio.abc.Stream
+    ) -> None:
         self.app = app
         self.config = config
+        self.context = context
         self.protocol: ProtocolWrapper
         self.send_lock = trio.Lock()
         self.timeout_lock = trio.Lock()
@@ -62,13 +66,13 @@ class TCPServer:
             client = parse_socket_addr(socket.family, socket.getpeername())
             server = parse_socket_addr(socket.family, socket.getsockname())
 
-            async with trio.open_nursery() as nursery:
-                self.nursery = nursery
-                context = Context(nursery)
+            async with TaskGroup() as task_group:
+                self._task_group = task_group
                 self.protocol = ProtocolWrapper(
                     self.app,
                     self.config,
-                    context,
+                    self.context,
+                    task_group,
                     ssl,
                     client,
                     server,
@@ -76,7 +80,7 @@ class TCPServer:
                     alpn_protocol,
                 )
                 await self.protocol.initiate()
-                await self._update_keep_alive_timeout()
+                await self._start_keep_alive_timeout()
                 await self._read_data()
         except (trio.MultiError, OSError):
             pass
@@ -96,23 +100,23 @@ class TCPServer:
             await self._close()
             await self.protocol.handle(Closed())
         elif isinstance(event, Updated):
-            pass  # Triggers the keep alive timeout update
-        await self._update_keep_alive_timeout()
+            if event.idle:
+                await self._start_keep_alive_timeout()
+            else:
+                await self._stop_keep_alive_timeout()
 
     async def _read_data(self) -> None:
         while True:
             try:
                 with trio.fail_after(self.config.read_timeout or inf):
                     data = await self.stream.receive_some(MAX_RECV)
+            except trio.EndOfChannel:
+                break
             except (trio.ClosedResourceError, trio.BrokenResourceError):
                 await self.protocol.handle(Closed())
                 break
             else:
-                if data == b"":
-                    await self._update_keep_alive_timeout()
-                    break
                 await self.protocol.handle(RawData(data))
-                await self._update_keep_alive_timeout()
 
     async def _close(self) -> None:
         try:
@@ -128,19 +132,22 @@ class TCPServer:
             pass
         await self.stream.aclose()
 
-    async def _update_keep_alive_timeout(self) -> None:
+    async def _start_keep_alive_timeout(self) -> None:
         async with self.timeout_lock:
-            if self._keep_alive_timeout_handle is not None:
-                self._keep_alive_timeout_handle.cancel()
-            self._keep_alive_timeout_handle = None
-            if self.protocol.idle:
-                self._keep_alive_timeout_handle = await self.nursery.start(
+            if self._keep_alive_timeout_handle is None:
+                self._keep_alive_timeout_handle = await self._task_group._nursery.start(
                     _call_later, self.config.keep_alive_timeout, self._timeout
                 )
 
     async def _timeout(self) -> None:
         await self.protocol.handle(Closed())
         await self.stream.aclose()
+
+    async def _stop_keep_alive_timeout(self) -> None:
+        async with self.timeout_lock:
+            if self._keep_alive_timeout_handle is not None:
+                self._keep_alive_timeout_handle.cancel()
+            self._keep_alive_timeout_handle = None
 
 
 async def _call_later(

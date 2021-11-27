@@ -22,7 +22,7 @@ from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
 from ..events import Closed, Event, RawData, ZeroCopySend, Updated
-from ..typing import ASGIFramework, Context, H11SendableEvent
+from ..typing import ASGIFramework, H11SendableEvent, TaskGroup, WorkerContext
 
 STREAM_ID = 1
 
@@ -89,7 +89,8 @@ class H11Protocol:
         self,
         app: ASGIFramework,
         config: Config,
-        context: Context,
+        context: WorkerContext,
+        task_group: TaskGroup,
         ssl: bool,
         client: Optional[Tuple[str, int]],
         server: Optional[Tuple[str, int]],
@@ -109,10 +110,7 @@ class H11Protocol:
         self.ssl = ssl
         self.tls = tls
         self.stream: Optional[Union[HTTPStream, WSStream]] = None
-
-    @property
-    def idle(self) -> bool:
-        return self.stream is None or self.stream.idle
+        self.task_group = task_group
 
     async def initiate(self) -> None:
         pass
@@ -190,9 +188,9 @@ class H11Protocol:
                 if isinstance(event, h11.Request):
                     await self._check_protocol(event)
                     await self._create_stream(event)
+                    await self.send(Updated(idle=False))
                 elif event is h11.PAUSED:
                     await self.can_read.clear()
-                    await self.send(Updated())
                     await self.can_read.wait()
                 elif isinstance(event, h11.ConnectionClosed) or event is h11.NEED_DATA:
                     break
@@ -226,6 +224,7 @@ class H11Protocol:
                 self.app,
                 self.config,
                 self.context,
+                self.task_group,
                 self.ssl,
                 self.client,
                 self.server,
@@ -239,6 +238,7 @@ class H11Protocol:
                 self.app,
                 self.config,
                 self.context,
+                self.task_group,
                 self.ssl,
                 self.client,
                 self.server,
@@ -279,7 +279,7 @@ class H11Protocol:
 
     async def _maybe_recycle(self) -> None:
         await self._close_stream()
-        if self.connection.our_state is h11.DONE:
+        if not self.context.terminated and self.connection.our_state is h11.DONE:
             try:
                 self.connection.start_next_cycle()
             except h11.LocalProtocolError:
@@ -288,7 +288,7 @@ class H11Protocol:
                 self.response = None
                 self.scope = None
                 await self.can_read.set()
-                await self.send(Updated())
+                await self.send(Updated(idle=True))
         else:
             await self.can_read.set()
             await self.send(Closed())

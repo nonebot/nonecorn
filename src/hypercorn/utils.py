@@ -6,6 +6,7 @@ import asyncio
 import platform
 import socket
 import sys
+from dataclasses import dataclass
 from enum import Enum
 from importlib import import_module
 from multiprocessing.synchronize import Event as EventType
@@ -361,3 +362,7 @@ def can_sendfile(loop: asyncio.AbstractEventLoop, https: bool = False) -> bool:
                     and isinstance(loop, asyncio.ProactorEventLoop)
             )
             or (hasattr(os, "sendfile") and not (check_uvloop(loop) and https)))
+
+@dataclass
+class WorkerState:
+    terminated: bool = False

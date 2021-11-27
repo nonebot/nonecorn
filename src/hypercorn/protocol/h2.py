@@ -24,7 +24,7 @@ from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
 from ..events import Closed, Event, RawData, ZeroCopySend, Updated
-from ..typing import ASGIFramework, Context, Event as IOEvent
+from ..typing import ASGIFramework, Event as IOEvent, TaskGroup, WorkerContext
 from ..utils import filter_pseudo_headers
 
 BUFFER_HIGH_WATER = 2 * 2 ** 14  # Twice the default max frame size (two frames worth)
@@ -83,7 +83,8 @@ class H2Protocol:
         self,
         app: ASGIFramework,
         config: Config,
-        context: Context,
+        context: WorkerContext,
+        task_group: TaskGroup,
         ssl: bool,
         client: Optional[Tuple[str, int]],
         server: Optional[Tuple[str, int]],
@@ -95,6 +96,7 @@ class H2Protocol:
         self.closed = False
         self.config = config
         self.context = context
+        self.task_group = task_group
 
         self.connection = h2.connection.H2Connection(
             config=h2.config.H2Configuration(client_side=False, header_encoding=None)
@@ -137,7 +139,7 @@ class H2Protocol:
             event.headers = headers
             await self._create_stream(event)
             await self.streams[event.stream_id].handle(EndBody(stream_id=event.stream_id))
-        self.context.spawn(self.send_task)
+        self.task_group.spawn(self.send_task)
 
     async def send_task(self) -> None:
         # This should be run in a seperate task to the rest of this
@@ -228,7 +230,12 @@ class H2Protocol:
                 await self._flush()
             elif isinstance(event, StreamClosed):
                 await self._close_stream(event.stream_id)
-                await self.send(Updated())
+                await self.send(
+                    Updated(
+                        idle=len(self.streams) == 0
+                        or all(stream.idle for stream in self.streams.values())
+                    )
+                )
             elif isinstance(event, Request):
                 await self._create_server_push(event.stream_id, event.raw_path, event.headers)
         except (
@@ -244,7 +251,14 @@ class H2Protocol:
     async def _handle_events(self, events: List[h2.events.Event]) -> None:
         for event in events:
             if isinstance(event, h2.events.RequestReceived):
-                await self._create_stream(event)
+                if self.context.terminated:
+                    self.connection.reset_stream(event.stream_id)
+                    self.connection.update_settings(
+                        {h2.settings.SettingCodes.MAX_CONCURRENT_STREAMS: 0}
+                    )
+                else:
+                    await self._create_stream(event)
+                    await self.send(Updated(idle=False))
             elif isinstance(event, h2.events.DataReceived):
                 await self.streams[event.stream_id].handle(
                     Body(stream_id=event.stream_id, data=event.data)
@@ -313,6 +327,7 @@ class H2Protocol:
                 self.app,
                 self.config,
                 self.context,
+                self.task_group,
                 self.ssl,
                 self.client,
                 self.server,
@@ -325,6 +340,7 @@ class H2Protocol:
                 self.app,
                 self.config,
                 self.context,
+                self.task_group,
                 self.ssl,
                 self.client,
                 self.server,
