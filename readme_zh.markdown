@@ -14,6 +14,8 @@ gunicorn --worker-class hypercorn.workers.HypercornUvloopWorker ，
 
 - multiprocessing模块修复，避免出现在win上关不掉的问题 ~~uvicorn：啊嚏~~
 
+- 新扩展 ```http.response.zerocopysend```
+
 - 新扩展 ```http.trailingheaders.send``` 发送trailer header
 
 - type Literal["http.trailingheaders.send"]
