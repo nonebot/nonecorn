@@ -97,6 +97,7 @@ class TCPServer:
                 except ConnectionError:
                     await self.protocol.handle(Closed())
         elif isinstance(event, ZeroCopySend):
+            await self.writer.drain()
             await self.zerocopysend(event.file, event.offset, event.count)
         elif isinstance(event, Closed):
             await self._close()
