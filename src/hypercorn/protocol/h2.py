@@ -230,12 +230,13 @@ class H2Protocol:
                 await self._flush()
             elif isinstance(event, StreamClosed):
                 await self._close_stream(event.stream_id)
-                await self.send(
-                    Updated(
-                        idle=len(self.streams) == 0
-                        or all(stream.idle for stream in self.streams.values())
-                    )
+                idle = len(self.streams) == 0 or all(
+                    stream.idle for stream in self.streams.values()
                 )
+                if idle and self.context.terminated:
+                    self.connection.close_connection()
+                    await self._flush()
+                await self.send(Updated(idle=idle))
             elif isinstance(event, Request):
                 await self._create_server_push(event.stream_id, event.raw_path, event.headers)
         except (
