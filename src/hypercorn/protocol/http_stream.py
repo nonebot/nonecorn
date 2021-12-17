@@ -38,17 +38,17 @@ class ASGIHTTPState(Enum):
 
 class HTTPStream:
     def __init__(
-        self,
-        app: ASGIFramework,
-        config: Config,
-        context: WorkerContext,
-        task_group: TaskGroup,
-        ssl: bool,
-        client: Optional[Tuple[str, int]],
-        server: Optional[Tuple[str, int]],
-        send: Callable[[Event], Awaitable[None]],
-        stream_id: int,
-        tls: Optional[dict] = None
+            self,
+            app: ASGIFramework,
+            config: Config,
+            context: WorkerContext,
+            task_group: TaskGroup,
+            ssl: bool,
+            client: Optional[Tuple[str, int]],
+            server: Optional[Tuple[str, int]],
+            send: Callable[[Event], Awaitable[None]],
+            stream_id: int,
+            tls: Optional[dict] = None
     ) -> None:
         self.app = app
         self.client = client
@@ -158,11 +158,15 @@ class HTTPStream:
             }:
                 if self.state == ASGIHTTPState.REQUEST:
                     headers = build_and_validate_headers(self.response.get("headers", []))
+                    http_version = self.response["meta"].get("http_version", None) if "meta" in self.response else None
+                    reason = self.response["meta"].get("reason", None) if "meta" in self.response else None
                     await self.send(
                         Response(
                             stream_id=self.stream_id,
                             headers=headers,
                             status_code=int(self.response["status"]),
+                            http_version=http_version,
+                            reason=reason
                         )
                     )
                     self.state = ASGIHTTPState.RESPONSE
@@ -191,11 +195,15 @@ class HTTPStream:
             }:
                 if self.state == ASGIHTTPState.REQUEST:
                     headers = build_and_validate_headers(self.response.get("headers", []))
+                    http_version = self.response["meta"].get("http_version", None) if "meta" in self.response else None
+                    reason = self.response["meta"].get("reason", None) if "meta" in self.response else None
                     await self.send(
                         Response(
                             stream_id=self.stream_id,
                             headers=headers,
                             status_code=int(self.response["status"]),
+                            http_version=http_version,
+                            reason=reason
                         )
                     )
                     self.state = ASGIHTTPState.RESPONSE

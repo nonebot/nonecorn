@@ -86,16 +86,16 @@ class H11WSConnection:
 
 class H11Protocol:
     def __init__(
-        self,
-        app: ASGIFramework,
-        config: Config,
-        context: WorkerContext,
-        task_group: TaskGroup,
-        ssl: bool,
-        client: Optional[Tuple[str, int]],
-        server: Optional[Tuple[str, int]],
-        send: Callable[[Event], Awaitable[None]],
-        tls: Optional[dict] = None
+            self,
+            app: ASGIFramework,
+            config: Config,
+            context: WorkerContext,
+            task_group: TaskGroup,
+            ssl: bool,
+            client: Optional[Tuple[str, int]],
+            server: Optional[Tuple[str, int]],
+            send: Callable[[Event], Awaitable[None]],
+            tls: Optional[dict] = None
     ) -> None:
         self.app = app
         self.can_read = context.event_class()
@@ -130,6 +130,9 @@ class H11Protocol:
                     h11.Response(
                         headers=chain(event.headers, self.config.response_headers("h11")),
                         status_code=event.status_code,
+                        http_version=h11.Response._defaults[
+                            "http_version"] if event.http_version is None else event.http_version.encode("ascii"),
+                        reason=h11.Response._defaults["reason"] if event.reason is None else event.reason.encode("ascii")
                     )
                 )
             else:
