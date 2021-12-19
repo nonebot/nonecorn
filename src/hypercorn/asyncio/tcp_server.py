@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+from ssl import SSLError
 from typing import Any, Callable, Generator, Optional, IO
 
 from .task_group import TaskGroup
@@ -131,10 +132,11 @@ class TCPServer:
             try:
                 data = await asyncio.wait_for(self.reader.read(MAX_RECV), self.config.read_timeout)
             except (
-                    ConnectionError,
-                    OSError,
-                    asyncio.TimeoutError,
-                    TimeoutError,
+                ConnectionError,
+                OSError,
+                asyncio.TimeoutError,
+                TimeoutError,
+                SSLError,
             ):
                 await self.protocol.handle(Closed())
                 break
