@@ -132,7 +132,7 @@ class H11Protocol:
                         status_code=event.status_code,
                         http_version=h11.Response._defaults[
                             "http_version"] if event.http_version is None else event.http_version.encode("ascii"),
-                        reason=h11.Response._defaults["reason"] if event.reason is None else event.reason.encode("ascii")
+                        reason=h11.Response._defaults["reason"] if not event.reason else event.reason.encode("ascii")
                     )
                 )
             else:

@@ -57,7 +57,7 @@ class Response(Event):
     headers: List[Tuple[bytes, bytes]]
     status_code: int
     http_version: str = field(default_factory=lambda: None)
-    reason: str = field(default_factory=lambda: None)
+    reason: str = ""
 
 
 @dataclass(frozen=True)
