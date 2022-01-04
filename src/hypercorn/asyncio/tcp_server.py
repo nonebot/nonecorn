@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+from ssl import SSLError
 from typing import Any, Callable, Generator, Optional, IO
 
 from .task_group import TaskGroup
@@ -102,7 +103,7 @@ class TCPServer:
                 try:
                     self.writer.write(event.data)
                     await self.writer.drain()
-                except ConnectionError:
+                except (ConnectionError, RuntimeError):
                     await self.protocol.handle(Closed())
         elif isinstance(event, ZeroCopySend):
             await self.writer.drain()
@@ -131,10 +132,11 @@ class TCPServer:
             try:
                 data = await asyncio.wait_for(self.reader.read(MAX_RECV), self.config.read_timeout)
             except (
-                    ConnectionError,
-                    OSError,
-                    asyncio.TimeoutError,
-                    TimeoutError,
+                ConnectionError,
+                OSError,
+                asyncio.TimeoutError,
+                TimeoutError,
+                SSLError,
             ):
                 await self.protocol.handle(Closed())
                 break
@@ -150,7 +152,7 @@ class TCPServer:
         try:
             self.writer.close()
             await self.writer.wait_closed()
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, RuntimeError):
             pass  # Already closed
 
         await self._stop_keep_alive_timeout()

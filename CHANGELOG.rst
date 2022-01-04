@@ -1,3 +1,25 @@
+0.13.2 2021-12-23
+-----------------
+
+* Bugfix re-enable HTTP/3.
+
+0.13.1 2021-12-16
+-----------------
+
+* Bugfix trio tcp server read completion.
+
+0.13.0 2021-12-14
+-----------------
+
+* Bugfix eof and keep alive handling.
+* Bugfix Handle SSLErrors when reading.
+* Support websocket close reasons.
+* Improve the graceful shutdown, such that it works as expected.
+* Support a keyfile password argument.
+* Change the logging level to warning for lifespan not supported.
+* Shutdown the default executor.
+* Support additional headers for WS accept response.
+
 0.12.0 2021-11-08
 -----------------
 
