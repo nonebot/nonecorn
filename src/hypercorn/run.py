@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import platform
-import random
 import signal
 import time
 import multiprocessing
@@ -65,7 +64,7 @@ def run_multiple(config: Config, worker_func: WorkerFunc) -> None:
         process.start()
         processes.append(process)
         if platform.system() == "Windows":
-            time.sleep(0.1 * random.random())
+            time.sleep(0.1)
 
     def shutdown(*args: Any) -> None:
         shutdown_event.set()
