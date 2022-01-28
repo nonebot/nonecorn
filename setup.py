@@ -33,7 +33,7 @@ TESTS_REQUIRE = [
 
 setup(
     name="nonecorn",
-    version="0.13.0dev2",
+    version="0.13.1dev1",
     python_requires=">=3.7",
     description="A ASGI Server based on Hyper libraries and inspired by Gunicorn.",
     long_description=long_description,

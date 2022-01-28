@@ -131,7 +131,7 @@ class H11Protocol:
                         headers=chain(event.headers, self.config.response_headers("h11")),
                         status_code=event.status_code,
                         http_version=b"1.1" if event.http_version is None else event.http_version.encode("ascii"),
-                        reason=b"OK" if not event.reason else event.reason.encode("ascii")
+                        reason=b"" if not event.reason else event.reason.encode("ascii")
                     )
                 )
             else:

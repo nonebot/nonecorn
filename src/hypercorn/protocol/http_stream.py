@@ -158,7 +158,7 @@ class HTTPStream:
             }:
                 if self.state == ASGIHTTPState.REQUEST:
                     headers = build_and_validate_headers(self.response.get("headers", []))
-                    http_version = self.response["meta"].get("http_version", None) if "meta" in self.response else None
+                    http_version = self.response["meta"].get("http_version") if "meta" in self.response else None
                     reason = self.response["meta"].get("reason", "") if "meta" in self.response else ""
                     await self.send(
                         Response(
