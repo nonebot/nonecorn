@@ -130,9 +130,8 @@ class H11Protocol:
                     h11.Response(
                         headers=chain(event.headers, self.config.response_headers("h11")),
                         status_code=event.status_code,
-                        http_version=h11.Response._defaults[
-                            "http_version"] if event.http_version is None else event.http_version.encode("ascii"),
-                        reason=h11.Response._defaults["reason"] if not event.reason else event.reason.encode("ascii")
+                        http_version=b"1.1" if event.http_version is None else event.http_version.encode("ascii"),
+                        reason=b"OK" if not event.reason else event.reason.encode("ascii")
                     )
                 )
             else:
