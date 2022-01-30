@@ -56,7 +56,7 @@ class EndData(Event):
 class Response(Event):
     headers: List[Tuple[bytes, bytes]]
     status_code: int
-    http_version: str = field(default_factory=lambda: None)
+    http_version: Optional[str] = field(default_factory=lambda: None)
     reason: str = ""
 
 

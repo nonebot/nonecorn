@@ -8,7 +8,6 @@ if sys.version_info < (3, 7):
 
 PROJECT_ROOT = os.path.dirname(__file__)
 
-
 with open(os.path.join(PROJECT_ROOT, "README.rst")) as file_:
     long_description = file_.read()
 
@@ -35,7 +34,7 @@ setup(
     name="nonecorn",
     version="0.13.1dev1",
     python_requires=">=3.7",
-    description="A ASGI Server based on Hyper libraries and inspired by Gunicorn.",
+    description="A ASGI Server forked from hypercorn with more extra feature beyond ASGI",
     long_description=long_description,
     url="https://gitlab.com/pgjones/hypercorn/",
     author="P G Jones",
@@ -68,5 +67,5 @@ setup(
     },
     tests_require="hypercorn[tests]",
     entry_points={"console_scripts": ["hypercorn = hypercorn.__main__:main"]},
-    include_package_data=True,
+    include_package_data=True
 )
