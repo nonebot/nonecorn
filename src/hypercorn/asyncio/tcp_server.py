@@ -13,7 +13,7 @@ from ..protocol import ProtocolWrapper
 from ..typing import ASGIFramework
 from ..utils import parse_socket_addr, can_sendfile, is_ssl, get_tls_info
 
-MAX_RECV = 2 ** 16
+MAX_RECV = 2**16
 
 
 class EventWrapper:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from itertools import chain
-from typing import Awaitable, Callable, Optional, Tuple, Union
+from typing import Awaitable, Callable, cast, Optional, Tuple, Type, Union
 
 import h11
 
@@ -64,6 +64,8 @@ class H11WSConnection:
     # events (Response, Body, EndBody).
     our_state = None  # Prevents recycling the connection
     they_are_waiting_for_100_continue = False
+    their_state = None
+    trailing_data = (b"", False)
 
     def __init__(self, h11_connection: h11.Connection) -> None:
         self.buffer = bytearray(h11_connection.trailing_data[0])
@@ -72,7 +74,7 @@ class H11WSConnection:
     def receive_data(self, data: bytes) -> None:
         self.buffer.extend(data)
 
-    def next_event(self) -> Data:
+    def next_event(self) -> Union[Data, Type[h11.NEED_DATA]]:
         if self.buffer:
             event = Data(stream_id=STREAM_ID, data=bytes(self.buffer))
             self.buffer = bytearray()
@@ -82,6 +84,9 @@ class H11WSConnection:
 
     def send(self, event: H11SendableEvent) -> bytes:
         return self.h11_connection.send(event)
+
+    def start_next_cycle(self) -> None:
+        pass
 
 
 class H11Protocol:
@@ -101,7 +106,7 @@ class H11Protocol:
         self.can_read = context.event_class()
         self.client = client
         self.config = config
-        self.connection = h11.Connection(
+        self.connection: Union[h11.Connection, H11WSConnection] = h11.Connection(
             h11.SERVER, max_incomplete_event_size=self.config.h11_max_incomplete_size
         )
         self.context = context
@@ -128,7 +133,7 @@ class H11Protocol:
             if event.status_code >= 200:
                 await self._send_h11_event(
                     h11.Response(
-                        headers=chain(event.headers, self.config.response_headers("h11")),
+                        headers=list(chain(event.headers, self.config.response_headers("h11"))),
                         status_code=event.status_code,
                         http_version=b"1.1" if event.http_version is None else event.http_version.encode("ascii"),
                         reason=b"" if not event.reason else event.reason.encode("ascii")
@@ -137,7 +142,7 @@ class H11Protocol:
             else:
                 await self._send_h11_event(
                     h11.InformationalResponse(
-                        headers=chain(event.headers, self.config.response_headers("h11")),
+                        headers=list(chain(event.headers, self.config.response_headers("h11"))),
                         status_code=event.status_code,
                     )
                 )
@@ -234,7 +239,7 @@ class H11Protocol:
                 STREAM_ID,
                 self.tls
             )
-            self.connection = H11WSConnection(self.connection)
+            self.connection = H11WSConnection(cast(h11.Connection, self.connection))
         else:
             self.stream = HTTPStream(
                 self.app,
@@ -251,7 +256,7 @@ class H11Protocol:
         await self.stream.handle(
             Request(
                 stream_id=STREAM_ID,
-                headers=request.headers,
+                headers=list(request.headers),
                 http_version=request.http_version.decode(),
                 method=request.method.decode("ascii").upper(),
                 raw_path=request.target
@@ -271,9 +276,11 @@ class H11Protocol:
         await self._send_h11_event(
             h11.Response(
                 status_code=status_code,
-                headers=chain(
-                    [(b"content-length", b"0"), (b"connection", b"close")],
-                    self.config.response_headers("h11"),
+                headers=list(
+                    chain(
+                        [(b"content-length", b"0"), (b"connection", b"close")],
+                        self.config.response_headers("h11"),
+                    )
                 ),
             )
         )
