@@ -40,6 +40,9 @@ class HypercornAsyncioWorker(Worker):
         config_kwargs = {
             "access_log_format": self.cfg.access_log_format,
             "accesslog": self.cfg.accesslog,
+            "alpn_protocols": self.cfg.alpn_protocols,
+            "alt_svc_headers": self.cfg.alt_svc_headers,
+            "debug": self.cfg.debug,
             "loglevel": self.cfg.loglevel.upper(),
             "errorlog": self.cfg.errorlog,
             "logconfig": self.cfg.logconfig,
@@ -50,7 +53,24 @@ class HypercornAsyncioWorker(Worker):
             "statsd_host": self.cfg.statsd_host,
             "statsd_prefix": self.cfg.statsd_prefix,
             "umask": self.cfg.umask,
-            "user": self.cfg.user
+            "user": self.cfg.user,
+            "h11_max_incomplete_size": self.cfg.h11_max_incomplete_size,
+            "h2_max_concurrent_streams": self.cfg.h2_max_concurrent_streams,
+            "h2_max_header_list_size": self.cfg.h2_max_header_list_size,
+            "h2_max_inbound_frame_size": self.cfg.h2_max_inbound_frame_size,
+            "include_server_header": self.cfg.include_server_header,
+            "logger_class": self.cfg.logger_class,
+            "max_app_queue_size": self.cfg.max_app_queue_size,
+            "pid_path": self.cfg.pid_path,
+            "root_path": self.cfg.root_path,
+            "server_names": self.cfg.server_names,
+            "shutdown_timeout": self.cfg.shutdown_timeout,
+            "ssl_handshake_timeout": self.cfg.ssl_handshake_timeout,
+            "startup_timeout": self.cfg.startup_timeout,
+            "verify_flags": self.cfg.verify_flags,
+            "verify_mode": self.cfg.verify_mode,
+            "websocket_max_message_size": self.cfg.websocket_max_message_size,
+            "websocket_ping_interval": self.cfg.websocket_ping_interval,
         }
         config_kwargs.update(logconfig_dict=self.cfg.logconfig_dict if self.cfg.logconfig_dict else None)
 
@@ -70,7 +90,8 @@ class HypercornAsyncioWorker(Worker):
         config_kwargs.update(self.CONFIG_KWARGS)
         self.config = Config()  # todo
         for k, v in config_kwargs.items():
-            setattr(self.config, k, v)
+            if v is not None:
+                setattr(self.config, k, v)
 
     def init_signals(self):
         for s in self.SIGNALS:
