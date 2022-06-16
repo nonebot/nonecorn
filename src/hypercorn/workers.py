@@ -59,7 +59,6 @@ class HypercornAsyncioWorker(Worker):
             "h2_max_header_list_size": getattr(self.cfg, "h2_max_header_list_size", None),
             "h2_max_inbound_frame_size": getattr(self.cfg, "h2_max_inbound_frame_size", None),
             "include_server_header": getattr(self.cfg, "include_server_header", None),
-            "logger_class": getattr(self.cfg, "logger_class", None),
             "max_app_queue_size": getattr(self.cfg, "max_app_queue_size", None),
             "pid_path": getattr(self.cfg, "pid_path", None),
             "root_path": getattr(self.cfg, "root_path", None),
