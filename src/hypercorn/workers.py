@@ -43,6 +43,9 @@ class HypercornAsyncioWorker(Worker):
         config_kwargs = {
             "access_log_format": self.cfg.access_log_format,
             "accesslog": self.cfg.accesslog,
+            "alpn_protocols": getattr(self.cfg, "alpn_protocols", None),
+            "alt_svc_headers": getattr(self.cfg, "alt_svc_headers", None),
+            "debug": getattr(self.cfg, "debug", None),
             "loglevel": self.cfg.loglevel.upper(),
             "errorlog": self.cfg.errorlog,
             "logconfig": self.cfg.logconfig,
@@ -54,6 +57,22 @@ class HypercornAsyncioWorker(Worker):
             "statsd_prefix": self.cfg.statsd_prefix,
             "umask": self.cfg.umask,
             "user": self.cfg.user,
+            "h11_max_incomplete_size": getattr(self.cfg, "h11_max_incomplete_size", None),
+            "h2_max_concurrent_streams": getattr(self.cfg, "h2_max_concurrent_streams", None),
+            "h2_max_header_list_size": getattr(self.cfg, "h2_max_header_list_size", None),
+            "h2_max_inbound_frame_size": getattr(self.cfg, "h2_max_inbound_frame_size", None),
+            "include_server_header": getattr(self.cfg, "include_server_header", None),
+            "max_app_queue_size": getattr(self.cfg, "max_app_queue_size", None),
+            "pid_path": getattr(self.cfg, "pid_path", None),
+            "root_path": getattr(self.cfg, "root_path", None),
+            "server_names": getattr(self.cfg, "server_names", None),
+            "shutdown_timeout": getattr(self.cfg, "shutdown_timeout", None),
+            "ssl_handshake_timeout": getattr(self.cfg, "ssl_handshake_timeout", None),
+            "startup_timeout": getattr(self.cfg, "startup_timeout", None),
+            "verify_flags": getattr(self.cfg, "verify_flags", None),
+            "verify_mode": getattr(self.cfg, "verify_mode", None),
+            "websocket_max_message_size": getattr(self.cfg, "websocket_max_message_size", None),
+            "websocket_ping_interval": getattr(self.cfg, "websocket_ping_interval", None),
         }
         config_kwargs.update(
             logconfig_dict=self.cfg.logconfig_dict if self.cfg.logconfig_dict else None
@@ -75,7 +94,8 @@ class HypercornAsyncioWorker(Worker):
         config_kwargs.update(self.CONFIG_KWARGS)
         self.config = Config()  # todo
         for k, v in config_kwargs.items():
-            setattr(self.config, k, v)
+            if v is not None:
+                setattr(self.config, k, v)
 
     def init_signals(self):
         for s in self.SIGNALS:
