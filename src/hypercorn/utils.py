@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import os
-import asyncio
 import platform
 import socket
 import sys
@@ -25,6 +24,7 @@ from typing import (
     Tuple,
     TYPE_CHECKING,
 )
+from functools import lru_cache
 
 try:
     from uvloop import Loop
@@ -351,7 +351,7 @@ def is_ssl(transport: asyncio.Transport) -> bool:
 def check_uvloop(loop) -> bool:
     return isinstance(loop, Loop) if Loop else False
 
-
+@lru_cache(2, typed=False)
 def can_sendfile(loop: asyncio.AbstractEventLoop, https: bool = False) -> bool:
     """
     Judge loop.sendfile available. Uvloop not included.
@@ -361,7 +361,7 @@ def can_sendfile(loop: asyncio.AbstractEventLoop, https: bool = False) -> bool:
                     hasattr(asyncio, "ProactorEventLoop")
                     and isinstance(loop, asyncio.ProactorEventLoop)
             )
-            or (hasattr(os, "sendfile") and not (check_uvloop(loop) and https)))
+            or (isinstance(loop, asyncio.SelectorEventLoop) and hasattr(os, "sendfile"))) and not https
 
 @dataclass
 class WorkerState:

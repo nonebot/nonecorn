@@ -76,6 +76,7 @@ class HTTPResponseStartEvent(TypedDict):
     type: Literal["http.response.start"]
     status: int
     headers: Iterable[Tuple[bytes, bytes]]
+    meta: dict
 
 
 class HTTPResponseBodyEvent(TypedDict):
@@ -83,6 +84,7 @@ class HTTPResponseBodyEvent(TypedDict):
     body: bytes
     more_body: bool
     headers: Optional[Iterable[Tuple[bytes, bytes]]] = None
+    meta: dict
 
 
 class HTTPServerPushEvent(TypedDict):

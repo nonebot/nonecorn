@@ -91,9 +91,9 @@ class HTTPStream:
                 "server": self.server,
                 "extensions": {},
             }
+            self.scope["extensions"]["http.response.trailers"] = {}
             if event.http_version in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.push"] = {}
-                self.scope["extensions"]["http.trailingheaders.send"] = {}
             if can_sendfile(asyncio.get_event_loop(),
                             self.scheme == "https") and event.http_version not in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.zerocopysend"] = {}
@@ -228,18 +228,19 @@ class HTTPStream:
                         await self.send(EndBody(stream_id=self.stream_id,
                                                 headers=message["meta"].get("headers") if "meta" in message else []))
                         await self.send(StreamClosed(stream_id=self.stream_id))
-                pass  # todo add zerocopysend
-            elif message["type"] == "http.trailingheaders.send" and self.state in {
+            elif message["type"] == "http.response.trailers" and self.state in {
                 ASGIHTTPState.REQUEST,
                 ASGIHTTPState.RESPONSE,
             }:
                 headers = message.get("headers", [])
-                await self.config.log.access(
-                    self.scope, self.response, time() - self.start_time
-                )
+                more_body = message.get("more_body", False)
+                if not more_body:
+                    await self.config.log.access(
+                        self.scope, self.response, time() - self.start_time
+                    )
                 await self.send(TrailerHeadersSend(stream_id=self.stream_id,
                                                    headers=headers,
-                                                   end_stream=not message.get("more_body", False)))
+                                                   end_stream=not more_body))
             else:
                 raise UnexpectedMessageError(self.state, message["type"])
 

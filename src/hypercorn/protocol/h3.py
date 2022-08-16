@@ -87,7 +87,8 @@ class H3Protocol:
         elif isinstance(event, TrailerHeadersSend):
             self.connection.send_headers(
                 event.stream_id,
-                event.headers
+                event.headers,
+                event.end_stream
             )
             await self.send()
         elif isinstance(event, StreamClosed):
