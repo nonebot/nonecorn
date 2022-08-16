@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import os
 import platform
 import socket
+import ssl
 import sys
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
 from importlib import import_module
 from multiprocessing.synchronize import Event as EventType
 from pathlib import Path
-import asyncio
-import ssl
 from typing import (
     Any,
     Awaitable,
@@ -24,7 +25,6 @@ from typing import (
     Tuple,
     TYPE_CHECKING,
 )
-from functools import lru_cache
 
 try:
     from uvloop import Loop
@@ -351,17 +351,21 @@ def is_ssl(transport: asyncio.Transport) -> bool:
 def check_uvloop(loop) -> bool:
     return isinstance(loop, Loop) if Loop else False
 
+
 @lru_cache(2, typed=False)
 def can_sendfile(loop: asyncio.AbstractEventLoop, https: bool = False) -> bool:
     """
     Judge loop.sendfile available. Uvloop not included.
     """
-    return sys.version_info[:2] >= (3, 7) and (
-            (
-                    hasattr(asyncio, "ProactorEventLoop")
-                    and isinstance(loop, asyncio.ProactorEventLoop)
-            )
-            or (isinstance(loop, asyncio.SelectorEventLoop) and hasattr(os, "sendfile"))) and not https
+    return (
+        sys.version_info[:2] >= (3, 7)
+        and (
+            (hasattr(asyncio, "ProactorEventLoop") and isinstance(loop, asyncio.ProactorEventLoop))
+            or (isinstance(loop, asyncio.SelectorEventLoop) and hasattr(os, "sendfile"))
+        )
+        and not https
+    )
+
 
 @dataclass
 class WorkerState:

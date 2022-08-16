@@ -19,7 +19,7 @@ from ssl import (
     VerifyMode,
 )
 from time import time
-from typing import Any, AnyStr, Dict, List, Mapping, Optional, Tuple, Type, Union, Sequence
+from typing import Any, AnyStr, Dict, List, Mapping, Optional, Sequence, Tuple, Type, Union
 from wsgiref.handlers import format_date_time
 
 import toml

@@ -1,13 +1,13 @@
-from typing import List, Callable, Awaitable, Any
 import asyncio
 import signal
 from functools import partial
+from typing import Any, Awaitable, Callable, List
 
-from gunicorn.workers.base import Worker
 from gunicorn.sock import TCPSocket
+from gunicorn.workers.base import Worker
 
-from hypercorn.config import Config as _Config, Sockets
 from hypercorn.asyncio import serve as asyncio_serve
+from hypercorn.config import Config as _Config, Sockets
 
 
 class Config(_Config):
@@ -25,13 +25,16 @@ def transfer_sock(gunicorn_sock: List[TCPSocket]) -> Sockets:
             secure_sockets.append(sock.sock)
         else:
             insecure_sockets.append(sock.sock)
-    return Sockets(secure_sockets=secure_sockets, insecure_sockets=insecure_sockets, quic_sockets=[])
+    return Sockets(
+        secure_sockets=secure_sockets, insecure_sockets=insecure_sockets, quic_sockets=[]
+    )
 
 
 class HypercornAsyncioWorker(Worker):
     """
     Borrowed from uvicorn
     """
+
     CONFIG_KWARGS = {"worker_class": "asyncio"}
 
     def __init__(self, *args, **kwargs):
@@ -50,9 +53,11 @@ class HypercornAsyncioWorker(Worker):
             "statsd_host": self.cfg.statsd_host,
             "statsd_prefix": self.cfg.statsd_prefix,
             "umask": self.cfg.umask,
-            "user": self.cfg.user
+            "user": self.cfg.user,
         }
-        config_kwargs.update(logconfig_dict=self.cfg.logconfig_dict if self.cfg.logconfig_dict else None)
+        config_kwargs.update(
+            logconfig_dict=self.cfg.logconfig_dict if self.cfg.logconfig_dict else None
+        )
 
         if self.cfg.is_ssl:
             ssl_kwargs = {
@@ -80,11 +85,13 @@ class HypercornAsyncioWorker(Worker):
         asgi_app = self.wsgi
         self.config.sockets = transfer_sock(self.sockets)
         if self.config.worker_class == "trio":
-            from hypercorn.trio import serve as trio_serve
             import trio
+
+            from hypercorn.trio import serve as trio_serve
 
             async def start():
                 async with trio.open_nursery() as nursery:
+
                     async def wrap(func: Callable[[], Awaitable[Any]]) -> None:
                         await func()
                         nursery.cancel_scope.cancel()
@@ -96,10 +103,14 @@ class HypercornAsyncioWorker(Worker):
             return
         if self.config.worker_class == "uvloop":
             import uvloop
+
             uvloop.install()
-        asyncio.run(asyncio.wait([asyncio_serve(asgi_app, self.config),
-                                  self.asyncio_callback_notify()],
-                                 return_when=asyncio.FIRST_COMPLETED))
+        asyncio.run(
+            asyncio.wait(
+                [asyncio_serve(asgi_app, self.config), self.asyncio_callback_notify()],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        )
 
     async def asyncio_callback_notify(self):
         while True:
@@ -108,6 +119,7 @@ class HypercornAsyncioWorker(Worker):
 
     async def trio_callback_notify(self):
         import trio
+
         while True:
             self.notify()
             await trio.sleep(self.timeout)

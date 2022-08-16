@@ -11,14 +11,14 @@ from aioquic.quic.events import QuicEvent
 from .events import (
     Body,
     Data,
-    ZeroCopySend as StreamZeroCopySend,
-    TrailerHeadersSend,
     EndBody,
     EndData,
     Event as StreamEvent,
     Request,
     Response,
     StreamClosed,
+    TrailerHeadersSend,
+    ZeroCopySend as StreamZeroCopySend,
 )
 from .http_stream import HTTPStream
 from .ws_stream import WSStream
@@ -85,11 +85,7 @@ class H3Protocol:
             self.connection.send_data(event.stream_id, b"", True)
             await self.send()
         elif isinstance(event, TrailerHeadersSend):
-            self.connection.send_headers(
-                event.stream_id,
-                event.headers,
-                event.end_stream
-            )
+            self.connection.send_headers(event.stream_id, event.headers, event.end_stream)
             await self.send()
         elif isinstance(event, StreamClosed):
             pass  # ??
@@ -139,7 +135,7 @@ class H3Protocol:
         )
 
     async def _create_server_push(
-            self, stream_id: int, path: bytes, headers: List[Tuple[bytes, bytes]]
+        self, stream_id: int, path: bytes, headers: List[Tuple[bytes, bytes]]
     ) -> None:
         request_headers = [(b":method", b"GET"), (b":path", path)]
         request_headers.extend(headers)

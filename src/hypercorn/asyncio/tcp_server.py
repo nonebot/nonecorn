@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import os
 import asyncio
+import os
 from ssl import SSLError
-from typing import Any, Callable, Generator, Optional, IO
+from typing import Any, Callable, Generator, IO, Optional
 
 from .task_group import TaskGroup
 from .worker_context import WorkerContext
 from ..config import Config
-from ..events import Closed, Event, RawData, ZeroCopySend, Updated
+from ..events import Closed, Event, RawData, Updated, ZeroCopySend
 from ..protocol import ProtocolWrapper
 from ..typing import ASGIFramework
-from ..utils import parse_socket_addr, can_sendfile, is_ssl, get_tls_info
+from ..utils import can_sendfile, get_tls_info, is_ssl, parse_socket_addr
 
 MAX_RECV = 2**16
 
@@ -87,7 +87,7 @@ class TCPServer:
                     server,
                     self.protocol_send,
                     alpn_protocol,
-                    tls
+                    tls,
                 )
                 await self.protocol.initiate()
                 await self._start_keep_alive_timeout()
@@ -117,7 +117,9 @@ class TCPServer:
             else:
                 await self._stop_keep_alive_timeout()
 
-    async def zerocopysend(self, file: IO[bytes], offset: Optional[int] = None, count: Optional[int] = None) -> None:
+    async def zerocopysend(
+        self, file: IO[bytes], offset: Optional[int] = None, count: Optional[int] = None
+    ) -> None:
         if offset is None:
             offset = os.lseek(file.fileno(), 0, os.SEEK_CUR)
         if count is None:
@@ -125,7 +127,12 @@ class TCPServer:
         try:
             await self.loop.sendfile(self.writer.transport, file, offset, count)
         except (NotImplementedError, AttributeError):  # for uvloop
-            os.sendfile(self.writer.transport.get_extra_info("socket").fileno(), file.fileno(), offset, count)
+            os.sendfile(
+                self.writer.transport.get_extra_info("socket").fileno(),
+                file.fileno(),
+                offset,
+                count,
+            )
 
     async def _read_data(self) -> None:
         while not self.reader.at_eof():

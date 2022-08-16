@@ -11,19 +11,19 @@ import priority
 from .events import (
     Body,
     Data,
-    ZeroCopySend as StreamZeroCopySend,
-    TrailerHeadersSend,
     EndBody,
     EndData,
     Event as StreamEvent,
     Request,
     Response,
     StreamClosed,
+    TrailerHeadersSend,
+    ZeroCopySend as StreamZeroCopySend,
 )
 from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
-from ..events import Closed, Event, RawData, ZeroCopySend, Updated
+from ..events import Closed, Event, RawData, Updated, ZeroCopySend
 from ..typing import ASGIFramework, Event as IOEvent, TaskGroup, WorkerContext
 from ..utils import filter_pseudo_headers
 
@@ -89,7 +89,7 @@ class H2Protocol:
         client: Optional[Tuple[str, int]],
         server: Optional[Tuple[str, int]],
         send: Callable[[Event], Awaitable[None]],
-        tls: Optional[dict] = None
+        tls: Optional[dict] = None,
     ) -> None:
         self.app = app
         self.client = client
@@ -126,7 +126,7 @@ class H2Protocol:
         return len(self.streams) == 0 or all(stream.idle for stream in self.streams.values())
 
     async def initiate(
-            self, headers: Optional[List[Tuple[bytes, bytes]]] = None, settings: Optional[str] = None
+        self, headers: Optional[List[Tuple[bytes, bytes]]] = None, settings: Optional[str] = None
     ) -> None:
         if settings is not None:
             self.connection.initiate_upgrade_connection(settings)
@@ -218,7 +218,9 @@ class H2Protocol:
                 pass  # https://github.com/python-hyper/h2/issues/236
             elif isinstance(event, (EndBody, EndData)):
                 if isinstance(event, EndBody) and event.headers:
-                    self.connection.send_headers(event.stream_id, event.headers, end_stream=True) # trailers must have endstream set
+                    self.connection.send_headers(
+                        event.stream_id, event.headers, end_stream=True
+                    )  # trailers must have endstream set
                     await self._flush()
                     return
                 self.stream_buffers[event.stream_id].set_complete()
@@ -226,7 +228,9 @@ class H2Protocol:
                 await self.has_data.set()
                 await self.stream_buffers[event.stream_id].drain()
             elif isinstance(event, TrailerHeadersSend):
-                self.connection.send_headers(event.stream_id, event.headers, end_stream=event.end_stream)
+                self.connection.send_headers(
+                    event.stream_id, event.headers, end_stream=event.end_stream
+                )
                 await self._flush()
             elif isinstance(event, StreamClosed):
                 await self._close_stream(event.stream_id)
@@ -240,10 +244,10 @@ class H2Protocol:
             elif isinstance(event, Request):
                 await self._create_server_push(event.stream_id, event.raw_path, event.headers)
         except (
-                BufferCompleteError,
-                KeyError,
-                priority.MissingStreamError,
-                h2.exceptions.ProtocolError,
+            BufferCompleteError,
+            KeyError,
+            priority.MissingStreamError,
+            h2.exceptions.ProtocolError,
         ):
             # Connection has closed whilst blocked on flow control or
             # connection has advanced ahead of the last emitted event.
@@ -334,7 +338,7 @@ class H2Protocol:
                 self.server,
                 self.stream_send,
                 request.stream_id,
-                self.tls
+                self.tls,
             )
         else:
             self.streams[request.stream_id] = HTTPStream(
@@ -347,7 +351,7 @@ class H2Protocol:
                 self.server,
                 self.stream_send,
                 request.stream_id,
-                self.tls
+                self.tls,
             )
         self.stream_buffers[request.stream_id] = StreamBuffer(self.context.event_class)
         try:
@@ -369,7 +373,7 @@ class H2Protocol:
         )
 
     async def _create_server_push(
-            self, stream_id: int, path: bytes, headers: List[Tuple[bytes, bytes]]
+        self, stream_id: int, path: bytes, headers: List[Tuple[bytes, bytes]]
     ) -> None:
         push_stream_id = self.connection.get_next_available_stream_id()
         request_headers = [(b":method", b"GET"), (b":path", path)]

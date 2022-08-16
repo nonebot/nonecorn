@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import os
 import asyncio
-from typing import Optional, Tuple, IO, TYPE_CHECKING
+import os
+from typing import IO, Optional, Tuple, TYPE_CHECKING
 
 from .task_group import TaskGroup
 from .worker_context import WorkerContext
 from ..config import Config
 from ..events import Event, RawData, ZeroCopySend
 from ..typing import ASGIFramework
-from ..utils import parse_socket_addr, can_sendfile, is_ssl
+from ..utils import can_sendfile, is_ssl, parse_socket_addr
 
 if TYPE_CHECKING:
     # h3/Quic is an optional part of Hypercorn
@@ -62,7 +62,9 @@ class UDPServer(asyncio.DatagramProtocol):
         elif isinstance(event, ZeroCopySend):
             await self.zerocopysend(event.file, event.offset, event.count)
 
-    async def zerocopysend(self, file: IO[bytes], offset: int = 0, count: Optional[int] = None) -> None:
+    async def zerocopysend(
+        self, file: IO[bytes], offset: int = 0, count: Optional[int] = None
+    ) -> None:
         if offset is None:
             offset = os.lseek(file.fileno(), 0, os.SEEK_CUR)
         if count is None:
@@ -70,5 +72,9 @@ class UDPServer(asyncio.DatagramProtocol):
         try:
             await self.loop.sendfile(self.writer.transport, file, offset, count)
         except (NotImplementedError, AttributeError):
-            os.sendfile(self.writer.transport.get_extra_info("socket").fileno(), file.fileno(), offset, count)
-
+            os.sendfile(
+                self.writer.transport.get_extra_info("socket").fileno(),
+                file.fileno(),
+                offset,
+                count,
+            )

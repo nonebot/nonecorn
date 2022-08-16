@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import multiprocessing
 import platform
 import signal
 import time
-import multiprocessing
 from multiprocessing import Event, Process
 from typing import Any
 
@@ -13,6 +13,7 @@ from .utils import write_pid_file
 
 multiprocessing.allow_connection_pickling()
 spawn = multiprocessing.get_context("spawn")
+
 
 def run(config: Config) -> None:
     if config.pid_path is not None:

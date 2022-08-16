@@ -8,8 +8,6 @@ import h11
 
 from .events import (
     Body,
-    ZeroCopySend as StreamZeroCopySend,
-    TrailerHeadersSend,
     Data,
     EndBody,
     EndData,
@@ -17,11 +15,13 @@ from .events import (
     Request,
     Response,
     StreamClosed,
+    TrailerHeadersSend,
+    ZeroCopySend as StreamZeroCopySend,
 )
 from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
-from ..events import Closed, Event, RawData, ZeroCopySend, Updated
+from ..events import Closed, Event, RawData, Updated, ZeroCopySend
 from ..typing import ASGIFramework, H11SendableEvent, TaskGroup, WorkerContext
 
 STREAM_ID = 1
@@ -91,16 +91,16 @@ class H11WSConnection:
 
 class H11Protocol:
     def __init__(
-            self,
-            app: ASGIFramework,
-            config: Config,
-            context: WorkerContext,
-            task_group: TaskGroup,
-            ssl: bool,
-            client: Optional[Tuple[str, int]],
-            server: Optional[Tuple[str, int]],
-            send: Callable[[Event], Awaitable[None]],
-            tls: Optional[dict] = None
+        self,
+        app: ASGIFramework,
+        config: Config,
+        context: WorkerContext,
+        task_group: TaskGroup,
+        ssl: bool,
+        client: Optional[Tuple[str, int]],
+        server: Optional[Tuple[str, int]],
+        send: Callable[[Event], Awaitable[None]],
+        tls: Optional[dict] = None,
     ) -> None:
         self.app = app
         self.can_read = context.event_class()
@@ -135,8 +135,10 @@ class H11Protocol:
                     h11.Response(
                         headers=list(chain(event.headers, self.config.response_headers("h11"))),
                         status_code=event.status_code,
-                        http_version=b"1.1" if event.http_version is None else event.http_version.encode("ascii"),
-                        reason=b"" if not event.reason else event.reason.encode("ascii")
+                        http_version=b"1.1"
+                        if event.http_version is None
+                        else event.http_version.encode("ascii"),
+                        reason=b"" if not event.reason else event.reason.encode("ascii"),
                     )
                 )
             else:
@@ -223,9 +225,9 @@ class H11Protocol:
 
         connection_tokens = connection_value.lower().split(",")
         if (
-                any(token.strip() == "upgrade" for token in connection_tokens)
-                and upgrade_value.lower() == "websocket"
-                and request.method.decode("ascii").upper() == "GET"
+            any(token.strip() == "upgrade" for token in connection_tokens)
+            and upgrade_value.lower() == "websocket"
+            and request.method.decode("ascii").upper() == "GET"
         ):
             self.stream = WSStream(
                 self.app,
@@ -237,7 +239,7 @@ class H11Protocol:
                 self.server,
                 self.stream_send,
                 STREAM_ID,
-                self.tls
+                self.tls,
             )
             self.connection = H11WSConnection(cast(h11.Connection, self.connection))
         else:
@@ -251,7 +253,7 @@ class H11Protocol:
                 self.server,
                 self.stream_send,
                 STREAM_ID,
-                self.tls
+                self.tls,
             )
         await self.stream.handle(
             Request(
@@ -259,7 +261,7 @@ class H11Protocol:
                 headers=list(request.headers),
                 http_version=request.http_version.decode(),
                 method=request.method.decode("ascii").upper(),
-                raw_path=request.target
+                raw_path=request.target,
             )
         )
 
@@ -331,7 +333,7 @@ class H11Protocol:
                 h11.InformationalResponse(
                     status_code=101,
                     headers=self.config.response_headers("h11")
-                            + [(b"connection", b"upgrade"), (b"upgrade", b"h2c")],
+                    + [(b"connection", b"upgrade"), (b"upgrade", b"h2c")],
                 )
             )
             raise H2CProtocolRequiredError(self.connection.trailing_data[0], event)

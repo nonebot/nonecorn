@@ -172,7 +172,7 @@ class WSStream:
         server: Optional[Tuple[str, int]],
         send: Callable[[Event], Awaitable[None]],
         stream_id: int,
-        tls: Optional[dict] = None
+        tls: Optional[dict] = None,
     ) -> None:
         self.app = app
         self.app_put: Optional[Callable] = None

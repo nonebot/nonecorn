@@ -4,7 +4,6 @@ from typing import Awaitable, Callable, Optional, Tuple, Union
 
 from .h2 import H2Protocol
 from .h11 import H2CProtocolRequiredError, H2ProtocolAssumedError, H11Protocol
-
 from ..config import Config
 from ..events import Event, RawData
 from ..typing import ASGIFramework, TaskGroup, WorkerContext
@@ -22,7 +21,7 @@ class ProtocolWrapper:
         server: Optional[Tuple[str, int]],
         send: Callable[[Event], Awaitable[None]],
         alpn_protocol: Optional[str] = None,
-        tls: Optional[dict] = None
+        tls: Optional[dict] = None,
     ) -> None:
         self.app = app
         self.config = config
@@ -44,7 +43,7 @@ class ProtocolWrapper:
                 self.client,
                 self.server,
                 self.send,
-                self.tls
+                self.tls,
             )
         else:
             self.protocol = H11Protocol(
@@ -56,7 +55,7 @@ class ProtocolWrapper:
                 self.client,
                 self.server,
                 self.send,
-                self.tls
+                self.tls,
             )
 
     async def initiate(self) -> None:

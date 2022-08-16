@@ -6,7 +6,16 @@ from time import time
 from typing import Awaitable, Callable, Optional, Tuple
 from urllib.parse import unquote
 
-from .events import Body, ZeroCopySend, TrailerHeadersSend, EndBody, Event, Request, Response, StreamClosed
+from .events import (
+    Body,
+    EndBody,
+    Event,
+    Request,
+    Response,
+    StreamClosed,
+    TrailerHeadersSend,
+    ZeroCopySend,
+)
 from ..config import Config
 from ..typing import (
     ASGIFramework,
@@ -18,10 +27,10 @@ from ..typing import (
 )
 from ..utils import (
     build_and_validate_headers,
+    can_sendfile,
     suppress_body,
     UnexpectedMessageError,
     valid_server_name,
-    can_sendfile
 )
 
 PUSH_VERSIONS = {"2", "3"}
@@ -38,17 +47,17 @@ class ASGIHTTPState(Enum):
 
 class HTTPStream:
     def __init__(
-            self,
-            app: ASGIFramework,
-            config: Config,
-            context: WorkerContext,
-            task_group: TaskGroup,
-            ssl: bool,
-            client: Optional[Tuple[str, int]],
-            server: Optional[Tuple[str, int]],
-            send: Callable[[Event], Awaitable[None]],
-            stream_id: int,
-            tls: Optional[dict] = None
+        self,
+        app: ASGIFramework,
+        config: Config,
+        context: WorkerContext,
+        task_group: TaskGroup,
+        ssl: bool,
+        client: Optional[Tuple[str, int]],
+        server: Optional[Tuple[str, int]],
+        send: Callable[[Event], Awaitable[None]],
+        stream_id: int,
+        tls: Optional[dict] = None,
     ) -> None:
         self.app = app
         self.client = client
@@ -94,8 +103,10 @@ class HTTPStream:
             self.scope["extensions"]["http.response.trailers"] = {}
             if event.http_version in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.push"] = {}
-            if can_sendfile(asyncio.get_event_loop(),
-                            self.scheme == "https") and event.http_version not in PUSH_VERSIONS:
+            if (
+                can_sendfile(asyncio.get_event_loop(), self.scheme == "https")
+                and event.http_version not in PUSH_VERSIONS
+            ):
                 self.scope["extensions"]["http.response.zerocopysend"] = {}
             if self.scheme == "https" and self.tls:
                 self.scope["extensions"]["tls"] = self.tls
@@ -133,8 +144,8 @@ class HTTPStream:
             if message["type"] == "http.response.start" and self.state == ASGIHTTPState.REQUEST:
                 self.response = message
             elif (
-                    message["type"] == "http.response.push"
-                    and self.scope["http_version"] in PUSH_VERSIONS
+                message["type"] == "http.response.push"
+                and self.scope["http_version"] in PUSH_VERSIONS
             ):
                 if not isinstance(message["path"], str):
                     raise TypeError(f"{message['path']} should be a str")
@@ -158,26 +169,38 @@ class HTTPStream:
             }:
                 if self.state == ASGIHTTPState.REQUEST:
                     headers = build_and_validate_headers(self.response.get("headers", []))
-                    http_version = self.response["meta"].get("http_version") if "meta" in self.response else None
-                    reason = self.response["meta"].get("reason", "") if "meta" in self.response else ""
+                    http_version = (
+                        self.response["meta"].get("http_version")
+                        if "meta" in self.response
+                        else None
+                    )
+                    reason = (
+                        self.response["meta"].get("reason", "") if "meta" in self.response else ""
+                    )
                     await self.send(
                         Response(
                             stream_id=self.stream_id,
                             headers=headers,
                             status_code=int(self.response["status"]),
                             http_version=http_version,
-                            reason=reason
+                            reason=reason,
                         )
                     )
                     self.state = ASGIHTTPState.RESPONSE
 
                 if (
-                        not suppress_body(self.scope["method"], int(self.response["status"]))
-                        and message.get("body", b"") != b""
+                    not suppress_body(self.scope["method"], int(self.response["status"]))
+                    and message.get("body", b"") != b""
                 ):
                     await self.send(
-                        Body(stream_id=self.stream_id, data=bytes(message.get("body", b"")),
-                             flush=message["meta"].get("flush", False) if "meta" in message else False))
+                        Body(
+                            stream_id=self.stream_id,
+                            data=bytes(message.get("body", b"")),
+                            flush=message["meta"].get("flush", False)
+                            if "meta" in message
+                            else False,
+                        )
+                    )
 
                 if not message.get("more_body", False):
                     if self.state != ASGIHTTPState.CLOSED:
@@ -185,9 +208,14 @@ class HTTPStream:
                         await self.config.log.access(
                             self.scope, self.response, time() - self.start_time
                         )
-                        await self.send(EndBody(stream_id=self.stream_id,
-                                                headers=message["meta"].get("headers",
-                                                                            []) if "meta" in message else []))
+                        await self.send(
+                            EndBody(
+                                stream_id=self.stream_id,
+                                headers=message["meta"].get("headers", [])
+                                if "meta" in message
+                                else [],
+                            )
+                        )
                         await self.send(StreamClosed(stream_id=self.stream_id))
             elif message["type"] == "http.response.zerocopysend" and self.state in {
                 ASGIHTTPState.REQUEST,
@@ -195,28 +223,36 @@ class HTTPStream:
             }:
                 if self.state == ASGIHTTPState.REQUEST:
                     headers = build_and_validate_headers(self.response.get("headers", []))
-                    http_version = self.response["meta"].get("http_version", None) if "meta" in self.response else None
-                    reason = self.response["meta"].get("reason", "") if "meta" in self.response else ""
+                    http_version = (
+                        self.response["meta"].get("http_version", None)
+                        if "meta" in self.response
+                        else None
+                    )
+                    reason = (
+                        self.response["meta"].get("reason", "") if "meta" in self.response else ""
+                    )
                     await self.send(
                         Response(
                             stream_id=self.stream_id,
                             headers=headers,
                             status_code=int(self.response["status"]),
                             http_version=http_version,
-                            reason=reason
+                            reason=reason,
                         )
                     )
                     self.state = ASGIHTTPState.RESPONSE
 
                 if (
-                        not suppress_body(self.scope["method"], int(self.response["status"]))
-                        and message.get("file") is not None
+                    not suppress_body(self.scope["method"], int(self.response["status"]))
+                    and message.get("file") is not None
                 ):
                     await self.send(
-                        ZeroCopySend(stream_id=self.stream_id,
-                                     file=message.get("file"),
-                                     offset=message.get("offset"),
-                                     count=message.get("count"))
+                        ZeroCopySend(
+                            stream_id=self.stream_id,
+                            file=message.get("file"),
+                            offset=message.get("offset"),
+                            count=message.get("count"),
+                        )
                     )
 
                 if not message.get("more_body", False):
@@ -225,8 +261,12 @@ class HTTPStream:
                         await self.config.log.access(
                             self.scope, self.response, time() - self.start_time
                         )
-                        await self.send(EndBody(stream_id=self.stream_id,
-                                                headers=message["meta"].get("headers") if "meta" in message else []))
+                        await self.send(
+                            EndBody(
+                                stream_id=self.stream_id,
+                                headers=message["meta"].get("headers") if "meta" in message else [],
+                            )
+                        )
                         await self.send(StreamClosed(stream_id=self.stream_id))
             elif message["type"] == "http.response.trailers" and self.state in {
                 ASGIHTTPState.REQUEST,
@@ -238,9 +278,11 @@ class HTTPStream:
                     await self.config.log.access(
                         self.scope, self.response, time() - self.start_time
                     )
-                await self.send(TrailerHeadersSend(stream_id=self.stream_id,
-                                                   headers=headers,
-                                                   end_stream=not more_body))
+                await self.send(
+                    TrailerHeadersSend(
+                        stream_id=self.stream_id, headers=headers, end_stream=not more_body
+                    )
+                )
             else:
                 raise UnexpectedMessageError(self.state, message["type"])
 

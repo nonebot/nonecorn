@@ -1,7 +1,7 @@
 import os
 import sys
 
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 if sys.version_info < (3, 7):
     sys.exit("Python 3.7 is the minimum required version")
@@ -67,5 +67,5 @@ setup(
     },
     tests_require="hypercorn[tests]",
     entry_points={"console_scripts": ["hypercorn = hypercorn.__main__:main"]},
-    include_package_data=True
+    include_package_data=True,
 )

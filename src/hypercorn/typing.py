@@ -252,11 +252,11 @@ class H2SyncStream(Protocol):
         ...
 
     async def handle_request(
-            self,
-            event: h2.events.RequestReceived,
-            scheme: str,
-            client: Tuple[str, int],
-            server: Tuple[str, int],
+        self,
+        event: h2.events.RequestReceived,
+        scheme: str,
+        client: Tuple[str, int],
+        server: Tuple[str, int],
     ) -> None:
         ...
 
@@ -277,11 +277,11 @@ class H2AsyncStream(Protocol):
         ...
 
     async def handle_request(
-            self,
-            event: h2.events.RequestReceived,
-            scheme: str,
-            client: Tuple[str, int],
-            server: Tuple[str, int],
+        self,
+        event: h2.events.RequestReceived,
+        scheme: str,
+        client: Tuple[str, int],
+        server: Tuple[str, int],
     ) -> None:
         ...
 
@@ -315,11 +315,11 @@ class WorkerContext(Protocol):
 
 class TaskGroup(Protocol):
     async def spawn_app(
-            self,
-            app: ASGIFramework,
-            config: Config,
-            scope: Scope,
-            send: Callable[[Optional[ASGISendEvent]], Awaitable[None]],
+        self,
+        app: ASGIFramework,
+        config: Config,
+        scope: Scope,
+        send: Callable[[Optional[ASGISendEvent]], Awaitable[None]],
     ) -> Callable[[ASGIReceiveEvent], Awaitable[None]]:
         ...
 
