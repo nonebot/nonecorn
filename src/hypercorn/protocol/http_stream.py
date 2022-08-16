@@ -283,6 +283,15 @@ class HTTPStream:
                         stream_id=self.stream_id, headers=headers, end_stream=not more_body
                     )
                 )
+                if not more_body:
+                    if self.scope["http_version"] == "2":
+                        await self.send(
+                            EndBody(
+                                stream_id=self.stream_id,
+                                headers=[],
+                            )
+                        )
+                    await self.send(StreamClosed(stream_id=self.stream_id))
             else:
                 raise UnexpectedMessageError(self.state, message["type"])
 

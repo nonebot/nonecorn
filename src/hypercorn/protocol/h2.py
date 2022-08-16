@@ -173,7 +173,11 @@ class H2Protocol:
                 await self._flush()
                 del self.stream_buffers[stream_id]
                 self.priority.remove_stream(stream_id)
-        except (h2.exceptions.StreamClosedError, KeyError, h2.exceptions.ProtocolError):
+        except (
+            h2.exceptions.StreamClosedError,
+            KeyError,
+            h2.exceptions.ProtocolError,
+        ) as e:  # todo why fail?
             # Stream or connection has closed whilst waiting to send
             # data, not a problem - just force close it.
             await self.stream_buffers[stream_id].close()
@@ -229,9 +233,16 @@ class H2Protocol:
                 await self.stream_buffers[event.stream_id].drain()
             elif isinstance(event, TrailerHeadersSend):
                 self.connection.send_headers(
-                    event.stream_id, event.headers, end_stream=event.end_stream
+                    event.stream_id, event.headers, event.end_stream  # fixme: do not close here
                 )
-                await self._flush()
+                if event.end_stream:
+                    await self._flush()  # the stream is gona close, no time to wait for priority
+                else:
+                    data = self.connection.data_to_send()
+                    if data:
+                        self.priority.unblock(event.stream_id)
+                        await self.has_data.set()
+                        await self.stream_buffers[event.stream_id].push(data)
             elif isinstance(event, StreamClosed):
                 await self._close_stream(event.stream_id)
                 idle = len(self.streams) == 0 or all(
@@ -248,7 +259,7 @@ class H2Protocol:
             KeyError,
             priority.MissingStreamError,
             h2.exceptions.ProtocolError,
-        ):
+        ) as e:
             # Connection has closed whilst blocked on flow control or
             # connection has advanced ahead of the last emitted event.
             return
