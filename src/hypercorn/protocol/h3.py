@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from aioquic.h3.connection import H3Connection
-from aioquic.h3.events import DataReceived, HeadersReceived
+from aioquic.h3.events import (
+    DatagramReceived,
+    DataReceived,
+    HeadersReceived,
+    WebTransportStreamDataReceived,
+)
 from aioquic.h3.exceptions import NoAvailablePushIDError
 from aioquic.quic.connection import QuicConnection
 from aioquic.quic.events import QuicEvent
@@ -11,14 +16,17 @@ from aioquic.quic.events import QuicEvent
 from .events import (
     Body,
     Data,
+    DatagramBody,
     EndBody,
     EndData,
     Event as StreamEvent,
     Request,
     Response,
     StreamClosed,
+    WebTransportStreamBody,
 )
 from .http_stream import HTTPStream
+from .webtransport_stream import WebTransportStream
 from .ws_stream import WSStream
 from ..config import Config
 from ..typing import ASGIFramework, TaskGroup, WorkerContext
@@ -44,7 +52,7 @@ class H3Protocol:
         self.connection = H3Connection(quic)
         self.send = send
         self.server = server
-        self.streams: Dict[int, Union[HTTPStream, WSStream]] = {}
+        self.streams: Dict[int, Union[HTTPStream, WSStream, WebTransportStream]] = {}
         self.task_group = task_group
 
     async def handle(self, quic_event: QuicEvent) -> None:
@@ -62,6 +70,17 @@ class H3Protocol:
                 )
                 if event.stream_ended:
                     await self.streams[event.stream_id].handle(EndBody(stream_id=event.stream_id))
+            elif isinstance(event, DatagramReceived):
+                await self.streams[event.flow_id].handle(
+                    DatagramBody(stream_id=1, flow_id=event.flow_id, data=event.data)
+                )
+            elif isinstance(event, WebTransportStreamDataReceived):
+                await self.streams[event.session_id].handle(
+                    WebTransportStreamBody(stream_id=event.stream_id, session_id=event.session_id, data=event.data)
+                )
+                if event.stream_ended:
+                    await self.streams[event.session_id].handle(EndBody(stream_id=event.stream_id))
+                pass # todo add here how to send webtransport.close
 
     async def stream_send(self, event: StreamEvent) -> None:
         if isinstance(event, Response):
@@ -72,6 +91,12 @@ class H3Protocol:
                 + self.config.response_headers("h3"),
             )
             await self.send()
+        elif isinstance(event, DatagramBody):
+            self.connection.send_datagram(flow_id=event.flow_id, data=event.data)
+            await self.send()  # todo check here
+        elif isinstance(event, WebTransportStreamBody):
+            self.connection._quic.send_stream_data(stream_id=event.stream_id, data=event.data)
+            await self.send()  # todo check here
         elif isinstance(event, (Body, Data)):
             self.connection.send_data(event.stream_id, event.data, False)
             await self.send()
@@ -84,14 +109,29 @@ class H3Protocol:
             await self._create_server_push(event.stream_id, event.raw_path, event.headers)
 
     async def _create_stream(self, request: HeadersReceived) -> None:
+        protocol = None
         for name, value in request.headers:
             if name == b":method":
                 method = value.decode("ascii").upper()
             elif name == b":path":
                 raw_path = value
+            elif name == b":protocol":
+                protocol = value.decode("ascii").lower()
 
-        if method == "CONNECT":
+        if method == "CONNECT" and protocol == "websocket":
             self.streams[request.stream_id] = WSStream(
+                self.app,
+                self.config,
+                self.context,
+                self.task_group,
+                True,
+                self.client,
+                self.server,
+                self.stream_send,
+                request.stream_id,
+            )
+        elif method == "CONNECT" and protocol == "webtransport":
+            self.streams[request.stream_id] = WebTransportStream(
                 self.app,
                 self.config,
                 self.context,

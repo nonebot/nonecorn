@@ -57,12 +57,25 @@ class WebsocketScope(TypedDict):
     extensions: Dict[str, dict]
 
 
+class WebTransportScope(TypedDict):
+    type: Literal["webtransport"]
+    asgi: ASGIVersions
+    http_version: str
+    scheme: str
+    path: str
+    raw_path: bytes
+    query_string: bytes
+    root_path: str
+    headers: Iterable[Tuple[bytes, bytes]]
+    client: Optional[Tuple[str, int]]
+    server: Optional[Tuple[str, Optional[int]]]
+
 class LifespanScope(TypedDict):
     type: Literal["lifespan"]
     asgi: ASGIVersions
 
 
-WWWScope = Union[HTTPScope, WebsocketScope]
+WWWScope = Union[HTTPScope, WebsocketScope, WebTransportScope]
 Scope = Union[HTTPScope, WebsocketScope, LifespanScope]
 
 
@@ -139,6 +152,41 @@ class WebsocketCloseEvent(TypedDict):
     reason: Optional[str]
 
 
+class WebTransportConnectEvent(TypedDict):
+    type: Literal["webtransport.connect"]
+
+
+class WebTransportAcceptEvent(TypedDict):
+    type: Literal["webtransport.accept"]
+    headers: Iterable[Tuple[bytes, bytes]]
+
+
+class WebTransportCloseEvent(TypedDict):
+    type: Literal["webtransport.close"]
+
+
+class WebTransportDatagramSendEvent(TypedDict):
+    type: Literal["webtransport.datagram.send"]
+    data: bytes
+
+
+class WebTransportStreamSendEvent(TypedDict):
+    type: Literal["webtransport.stream.send"]
+    stream: int
+    data: bytes
+
+
+class WebTransportDatagramReceiveEvent(TypedDict):
+    type: Literal["webtransport.datagram.receive"]
+    data: bytes
+
+
+class WebTransportStreamReceiveEvent(TypedDict):
+    type: Literal["webtransport.stream.receive"]
+    data: bytes
+    stream: int
+
+
 class LifespanStartupEvent(TypedDict):
     type: Literal["lifespan.startup"]
 
@@ -171,6 +219,10 @@ ASGIReceiveEvent = Union[
     WebsocketConnectEvent,
     WebsocketReceiveEvent,
     WebsocketDisconnectEvent,
+    WebTransportConnectEvent,
+    WebTransportCloseEvent,
+    WebTransportDatagramReceiveEvent,
+    WebTransportStreamReceiveEvent,
     LifespanStartupEvent,
     LifespanShutdownEvent,
 ]
@@ -186,6 +238,10 @@ ASGISendEvent = Union[
     WebsocketResponseStartEvent,
     WebsocketResponseBodyEvent,
     WebsocketCloseEvent,
+    WebTransportAcceptEvent,
+    WebTransportCloseEvent,
+    WebTransportDatagramSendEvent,
+    WebTransportStreamSendEvent,
     LifespanStartupCompleteEvent,
     LifespanStartupFailedEvent,
     LifespanShutdownCompleteEvent,

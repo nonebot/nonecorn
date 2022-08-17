@@ -46,3 +46,13 @@ class Response(Event):
 @dataclass(frozen=True)
 class StreamClosed(Event):
     pass
+
+
+@dataclass(frozen=True)
+class DatagramBody(Body):
+    flow_id: int
+
+
+@dataclass(frozen=True)
+class WebTransportStreamBody(Body):
+    session_id: int
