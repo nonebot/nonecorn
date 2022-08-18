@@ -90,7 +90,7 @@ class WebTransportStream:
                     self.app, self.config, self.scope, self.app_send
                 )
                 await self.app_put({"type": "webtransport.connect"})  # type: ignore
-        elif isinstance(event, DatagramBody):
+        elif isinstance(event, DatagramBody) and self.state == ASGIWebTransportState.CONNECTED:
             await self.app_put(
                 {
                     "type": "webtransport.datagram.receive",
@@ -98,7 +98,10 @@ class WebTransportStream:
                     "flow_id": event.flow_id,
                 }
             )
-        elif isinstance(event, WebTransportStreamBody):
+        elif (
+            isinstance(event, WebTransportStreamBody)
+            and self.state == ASGIWebTransportState.CONNECTED
+        ):
             await self.app_put(
                 {
                     "type": "webtransport.stream.receive",
