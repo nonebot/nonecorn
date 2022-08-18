@@ -49,7 +49,7 @@ class H3Protocol:
         self.client = client
         self.config = config
         self.context = context
-        self.connection = H3Connection(quic)
+        self.connection = H3Connection(quic, enable_webtransport=config.enable_webtransport)
         self.send = send
         self.server = server
         self.streams: Dict[int, Union[HTTPStream, WSStream, WebTransportStream]] = {}
@@ -80,7 +80,7 @@ class H3Protocol:
                 )
                 if event.stream_ended:
                     await self.streams[event.session_id].handle(EndBody(stream_id=event.stream_id))
-                pass # todo add here how to send webtransport.close
+                # todo add here how to send webtransport.close
 
     async def stream_send(self, event: StreamEvent) -> None:
         if isinstance(event, Response):

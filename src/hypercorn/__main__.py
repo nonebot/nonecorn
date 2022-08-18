@@ -139,6 +139,13 @@ def main(sys_args: Optional[List[str]] = None) -> None:
         action="append",
     )
     parser.add_argument(
+        "--enable-webtransport",
+        dest="enable_webtransport",
+        help="Whether to enable webtransport for http/3",
+        type=bool,
+        default=False,
+    )
+    parser.add_argument(
         "--reload",
         help="Enable automatic reloads on code changes",
         action="store_true",
@@ -276,6 +283,8 @@ def main(sys_args: Optional[List[str]] = None) -> None:
         config.insecure_bind = args.insecure_binds
     if len(args.quic_binds) > 0:
         config.quic_bind = args.quic_binds
+    if args.enable_webtransport:
+        config.enable_webtransport = True
     if len(args.server_names) > 0:
         config.server_names = args.server_names
 

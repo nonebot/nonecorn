@@ -156,7 +156,8 @@ class WebTransportStream:
     async def _accept(self, message: WebTransportAcceptEvent) -> None:
         self.state = ASGIWebTransportState.CONNECTED
         headers = message.get("headers", [])
-        await self.send(Response(stream_id=self.stream_id, status_code=200, headers=headers)) # type: ignore
+        headers.append((b"sec-webtransport-http3-draft", b"draft02"))  # type: ignore
+        await self.send(Response(stream_id=self.stream_id, status_code=200, headers=headers))  # type: ignore
         await self.config.log.access(
             self.scope, {"status": 200, "headers": []}, time() - self.start_time
         )
