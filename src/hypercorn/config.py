@@ -55,6 +55,7 @@ class Config:
     _quic_bind: List[str] = []
     _quic_addresses: List[Tuple] = []
     enable_webtransport: bool = False
+    max_datagram_frame_size = 65536
     _log: Optional[Logger] = None
     _root_path: str = ""
 

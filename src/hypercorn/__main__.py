@@ -146,6 +146,11 @@ def main(sys_args: Optional[List[str]] = None) -> None:
         default=False,
     )
     parser.add_argument(
+        "--max-datagram-frame-size",
+        dest="max_datagram_frame_size",
+        type=int,
+    )
+    parser.add_argument(
         "--reload",
         help="Enable automatic reloads on code changes",
         action="store_true",
@@ -285,6 +290,8 @@ def main(sys_args: Optional[List[str]] = None) -> None:
         config.quic_bind = args.quic_binds
     if args.enable_webtransport:
         config.enable_webtransport = True
+    if args.max_datagram_frame_size:
+        config.max_datagram_frame_size = args.max_datagram_frame_size
     if len(args.server_names) > 0:
         config.server_names = args.server_names
 

@@ -44,7 +44,11 @@ class QuicProtocol:
         self.server = server
         self.task_group = task_group
 
-        self.quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
+        self.quic_config = QuicConfiguration(
+            alpn_protocols=H3_ALPN,
+            is_client=False,
+            max_datagram_frame_size=config.max_datagram_frame_size,
+        )
         self.quic_config.load_cert_chain(certfile=config.certfile, keyfile=config.keyfile)
 
     @property
