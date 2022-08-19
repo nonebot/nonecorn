@@ -218,7 +218,7 @@ class WSStream:
                 "client": self.client,
                 "server": self.server,
                 "subprotocols": self.handshake.subprotocols or [],
-                "extensions": {"websocket.http.response": {}},
+                "extensions": {"websocket.http.response": {}, "websocket.multiframe": {}},
             }
 
             if not valid_server_name(self.config, event):
@@ -275,11 +275,16 @@ class WSStream:
             elif message["type"] == "websocket.send" and self.state == ASGIWebsocketState.CONNECTED:
                 event: WSProtoEvent
                 if message.get("bytes") is not None:
-                    event = BytesMessage(data=bytes(message["bytes"]))
+                    event = BytesMessage(
+                        data=bytes(message["bytes"]),
+                        message_finished=message.get("message_finished", True),
+                    )
                 elif not isinstance(message["text"], str):
                     raise TypeError(f"{message['text']} should be a str")
                 else:
-                    event = TextMessage(data=message["text"])
+                    event = TextMessage(
+                        data=message["text"], message_finished=message.get("message_finished", True)
+                    )
                 await self._send_wsproto_event(event)
             elif (
                 message["type"] == "websocket.close" and self.state == ASGIWebsocketState.HANDSHAKE
