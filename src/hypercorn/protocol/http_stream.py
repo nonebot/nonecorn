@@ -169,11 +169,6 @@ class HTTPStream:
             }:
                 if self.state == ASGIHTTPState.REQUEST:
                     headers = build_and_validate_headers(self.response.get("headers", []))
-                    http_version = (
-                        self.response["meta"].get("http_version")
-                        if "meta" in self.response
-                        else None
-                    )
                     reason = (
                         self.response["meta"].get("reason", "") if "meta" in self.response else ""
                     )
@@ -182,7 +177,6 @@ class HTTPStream:
                             stream_id=self.stream_id,
                             headers=headers,
                             status_code=int(self.response["status"]),
-                            http_version=http_version,
                             reason=reason,
                         )
                     )
@@ -223,11 +217,6 @@ class HTTPStream:
             }:
                 if self.state == ASGIHTTPState.REQUEST:
                     headers = build_and_validate_headers(self.response.get("headers", []))
-                    http_version = (
-                        self.response["meta"].get("http_version", None)
-                        if "meta" in self.response
-                        else None
-                    )
                     reason = (
                         self.response["meta"].get("reason", "") if "meta" in self.response else ""
                     )
@@ -236,7 +225,6 @@ class HTTPStream:
                             stream_id=self.stream_id,
                             headers=headers,
                             status_code=int(self.response["status"]),
-                            http_version=http_version,
                             reason=reason,
                         )
                     )

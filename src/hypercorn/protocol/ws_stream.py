@@ -351,7 +351,12 @@ class WSStream:
             message.get("subprotocol"), message.get("headers", [])
         )
         await self.send(
-            Response(stream_id=self.stream_id, status_code=status_code, headers=headers)
+            Response(
+                stream_id=self.stream_id,
+                status_code=status_code,
+                headers=headers,
+                reason="Switching Protocols",
+            )
         )
         await self.config.log.access(
             self.scope, {"status": status_code, "headers": []}, time() - self.start_time
@@ -363,11 +368,13 @@ class WSStream:
         body_suppressed = suppress_body("GET", self.response["status"])
         if self.state == ASGIWebsocketState.HANDSHAKE:
             headers = build_and_validate_headers(self.response["headers"])
+            reason = self.response["meta"].get("reason", "") if "meta" in self.response else ""
             await self.send(
                 Response(
                     stream_id=self.stream_id,
                     status_code=int(self.response["status"]),
                     headers=headers,
+                    reason=reason,
                 )
             )
             self.state = ASGIWebsocketState.RESPONSE

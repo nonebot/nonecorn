@@ -20,7 +20,7 @@ class Request(Event):
 @dataclass(frozen=True)
 class Body(Event):
     data: bytes
-    flush: bool = field(default_factory=lambda: False)
+    flush: bool = False
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class ZeroCopySend(Event):
 @dataclass(frozen=True)
 class TrailerHeadersSend(Event):
     headers: Iterable[Tuple[bytes, bytes]] = field(default_factory=list)
-    end_stream: bool = field(default_factory=lambda: True)
+    end_stream: bool = True
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ class EndBody(Event):
 @dataclass(frozen=True)
 class Data(Event):
     data: bytes
-    flush: bool = field(default_factory=lambda: False)
+    flush: bool = False
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,6 @@ class EndData(Event):
 class Response(Event):
     headers: List[Tuple[bytes, bytes]]
     status_code: int
-    http_version: Optional[str] = field(default_factory=lambda: None)
     reason: str = ""
 
 
