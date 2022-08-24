@@ -143,6 +143,19 @@ class HTTPStream:
         else:
             if message["type"] == "http.response.start" and self.state == ASGIHTTPState.REQUEST:
                 self.response = message
+                headers = build_and_validate_headers(self.response.get("headers", []))
+                reason = (
+                    message["meta"].get("reason", "") if "meta" in message else ""
+                )
+                await self.send(
+                    Response(
+                        stream_id=self.stream_id,
+                        headers=headers,
+                        status_code=int(message["status"]),
+                        reason=reason,
+                    )
+                )
+                self.state = ASGIHTTPState.RESPONSE
             elif (
                 message["type"] == "http.response.push"
                 and self.scope["http_version"] in PUSH_VERSIONS
