@@ -133,7 +133,7 @@ async def worker_serve(
         _, protocol = await loop.create_datagram_endpoint(
             lambda: UDPServer(app, loop, config, context), sock=sock
         )
-        server_tasks.add(loop.create_task(protocol.run()))  # type: ignore
+        server_tasks.add(loop.create_task(protocol.run()))
         bind = repr_socket_addr(sock.family, sock.getsockname())
         await config.log.info(f"Running on https://{bind} (QUIC) (CTRL + C to quit)")
 
@@ -172,14 +172,14 @@ async def worker_serve(
             await asyncio.wait_for(gathered_server_tasks, config.graceful_timeout)
         except asyncio.TimeoutError:
             pass
+        finally:
+            # Retrieve the Gathered Tasks Cancelled Exception, to
+            # prevent a warning that this hasn't been done.
+            gathered_server_tasks.exception()
 
-        # Retrieve the Gathered Tasks Cancelled Exception, to
-        # prevent a warning that this hasn't been done.
-        gathered_server_tasks.exception()
-
-        await lifespan.wait_for_shutdown()
-        lifespan_task.cancel()
-        await lifespan_task
+            await lifespan.wait_for_shutdown()
+            lifespan_task.cancel()
+            await lifespan_task
 
     if reload_:
         restart()
