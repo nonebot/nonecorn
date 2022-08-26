@@ -1,3 +1,7 @@
+Hypercorn is now hosted at `github.com/pgjones/hypercorn
+<https://github.com/pgjones/hypercorn>`_.
+
+
 Hypercorn
 =========
 
