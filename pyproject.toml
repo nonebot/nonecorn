@@ -21,8 +21,8 @@ classifiers = [
 include = ["src/hypercorn/py.typed"]
 license = "MIT"
 readme = "README.rst"
-repository = "https://gitlab.com/synodriver/hypercorn/"
-documentation = "https://pgjones.gitlab.io/hypercorn/"
+repository = "https://github.com/pgjones/hypercorn/"
+documentation = "https://hypercorn.readthedocs.io"
 
 [tool.poetry.dependencies]
 python = ">=3.7"
@@ -30,6 +30,7 @@ aioquic = { version = ">= 0.9.0, < 1.0", optional = true }
 h11 = "*"
 h2 = ">=3.1.0"
 priority = "*"
+pydata_sphinx_theme = { version = "*", optional = true }
 toml = "*"
 trio = { version = ">=0.11.0", optional = true }
 typing_extensions = { version = ">=3.7.4", python = "<3.8" }
@@ -48,6 +49,7 @@ trio = "*"
 hypercorn = "hypercorn.__main__:main"
 
 [tool.poetry.extras]
+docs = ["pydata_sphinx_theme"]
 h3 = ["aioquic"]
 trio = ["trio"]
 uvloop = ["uvloop"]
