@@ -12,6 +12,7 @@ from .events import (
     EndBody,
     EndData,
     Event as StreamEvent,
+    InformationalResponse,
     Request,
     Response,
     StreamClosed,
@@ -146,6 +147,8 @@ class H11Protocol:
                         reason=event.reason.encode("ascii"),
                     )
                 )
+        elif isinstance(event, InformationalResponse):
+            pass  # Ignore for HTTP/1
         elif isinstance(event, Body):
             await self._send_h11_event(h11.Data(data=event.data))
         elif isinstance(event, StreamZeroCopySend):
@@ -289,7 +292,7 @@ class H11Protocol:
     async def _maybe_recycle(self) -> None:
         await self._close_stream()
         if (
-            not self.context.terminated
+            not self.context.terminated.is_set()
             and self.connection.our_state is h11.DONE
             and self.connection.their_state is h11.DONE
         ):

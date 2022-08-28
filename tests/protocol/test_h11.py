@@ -10,7 +10,7 @@ import pytest_asyncio
 from _pytest.monkeypatch import MonkeyPatch
 
 import hypercorn.protocol.h11
-from hypercorn.asyncio.tcp_server import EventWrapper
+from hypercorn.asyncio.worker_context import EventWrapper
 from hypercorn.config import Config
 from hypercorn.events import Closed, RawData, Updated
 from hypercorn.protocol.events import Body, Data, EndBody, EndData, Request, Response, StreamClosed
@@ -34,8 +34,9 @@ async def _protocol(monkeypatch: MonkeyPatch) -> H11Protocol:
     MockHTTPStream.return_value = AsyncMock(spec=HTTPStream)
     monkeypatch.setattr(hypercorn.protocol.h11, "HTTPStream", MockHTTPStream)
     context = Mock()
-    context.terminated = False
     context.event_class.return_value = AsyncMock(spec=IOEvent)
+    context.terminated = context.event_class()
+    context.terminated.is_set.return_value = False
     return H11Protocol(AsyncMock(), Config(), context, AsyncMock(), False, None, None, AsyncMock())
 
 
@@ -48,6 +49,25 @@ async def test_protocol_send_response(protocol: H11Protocol) -> None:
             RawData(
                 data=(
                     b"HTTP/1.1 201 \r\ndate: Thu, 01 Jan 1970 01:23:20 GMT\r\n"
+                    b"server: hypercorn-h11\r\nConnection: close\r\n\r\n"
+                )
+            )
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_protocol_preserve_headers(protocol: H11Protocol) -> None:
+    await protocol.stream_send(
+        Response(stream_id=1, status_code=201, headers=[(b"X-Special", b"Value")])
+    )
+    protocol.send.assert_called()  # type: ignore
+    assert protocol.send.call_args_list == [  # type: ignore
+        call(
+            RawData(
+                data=(
+                    b"HTTP/1.1 201 \r\nX-Special: Value\r\n"
+                    b"date: Thu, 01 Jan 1970 01:23:20 GMT\r\n"
                     b"server: hypercorn-h11\r\nConnection: close\r\n\r\n"
                 )
             )

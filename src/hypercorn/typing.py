@@ -102,9 +102,14 @@ class HTTPZeroCopySendEvent(TypedDict):
 
 
 class HTTPTrailerHeadersSendEvent(TypedDict):
-    type: Literal["http.trailingheaders.send"]  # todo
+    type: Literal["http.response.trailers"]  # todo
     headers: Iterable[Tuple[bytes, bytes]]
     more_body: Optional[bool] = False
+
+
+class HTTPEarlyHintEvent(TypedDict):
+    type: Literal["http.response.early_hint"]
+    links: Iterable[bytes]
 
 
 class HTTPDisconnectEvent(TypedDict):
@@ -198,6 +203,7 @@ ASGISendEvent = Union[
     HTTPServerPushEvent,
     HTTPZeroCopySendEvent,
     HTTPTrailerHeadersSendEvent,
+    HTTPEarlyHintEvent,
     HTTPDisconnectEvent,
     WebsocketAcceptEvent,
     WebsocketSendEvent,
@@ -299,10 +305,13 @@ class Event(Protocol):
     async def wait(self) -> None:
         ...
 
+    def is_set(self) -> bool:
+        ...
+
 
 class WorkerContext(Protocol):
     event_class: Type[Event]
-    terminated: bool
+    terminated: Event
 
     @staticmethod
     async def sleep(wait: Union[float, int]) -> None:

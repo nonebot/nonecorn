@@ -10,6 +10,7 @@ from .events import (
     Body,
     EndBody,
     Event,
+    InformationalResponse,
     Request,
     Response,
     StreamClosed,
@@ -34,6 +35,7 @@ from ..utils import (
 )
 
 PUSH_VERSIONS = {"2", "3"}
+EARLY_HINTS_VERSIONS = {"2", "3"}
 
 
 class ASGIHTTPState(Enum):
@@ -111,6 +113,9 @@ class HTTPStream:
             if self.scheme == "https" and self.tls:
                 self.scope["extensions"]["tls"] = self.tls
 
+            if event.http_version in EARLY_HINTS_VERSIONS:
+                self.scope["extensions"]["http.response.early_hint"] = {}
+
             if valid_server_name(self.config, event):
                 self.app_put = await self.task_group.spawn_app(
                     self.app, self.config, self.scope, self.app_send
@@ -161,6 +166,19 @@ class HTTPStream:
                         http_version=self.scope["http_version"],
                         method="GET",
                         raw_path=message["path"].encode(),
+                    )
+                )
+            elif (
+                message["type"] == "http.response.early_hint"
+                and self.scope["http_version"] in EARLY_HINTS_VERSIONS
+                and self.state == ASGIHTTPState.REQUEST
+            ):
+                headers = [(b"link", bytes(link).strip()) for link in message["links"]]
+                await self.send(
+                    InformationalResponse(
+                        stream_id=self.stream_id,
+                        headers=headers,
+                        status_code=103,
                     )
                 )
             elif message["type"] == "http.response.body" and self.state in {

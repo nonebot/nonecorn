@@ -7,7 +7,6 @@ import platform
 import socket
 import ssl
 import sys
-from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
 from importlib import import_module
@@ -365,8 +364,3 @@ def can_sendfile(loop: asyncio.AbstractEventLoop, https: bool = False) -> bool:
         )
         and not https
     )
-
-
-@dataclass
-class WorkerState:
-    terminated: bool = False

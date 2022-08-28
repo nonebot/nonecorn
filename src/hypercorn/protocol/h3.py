@@ -14,6 +14,7 @@ from .events import (
     EndBody,
     EndData,
     Event as StreamEvent,
+    InformationalResponse,
     Request,
     Response,
     StreamClosed,
@@ -52,7 +53,7 @@ class H3Protocol:
     async def handle(self, quic_event: QuicEvent) -> None:
         for event in self.connection.handle_event(quic_event):
             if isinstance(event, HeadersReceived):
-                if not self.context.terminated:
+                if not self.context.terminated.is_set():
                     await self._create_stream(event)
                     if event.stream_ended:
                         await self.streams[event.stream_id].handle(
@@ -66,7 +67,7 @@ class H3Protocol:
                     await self.streams[event.stream_id].handle(EndBody(stream_id=event.stream_id))
 
     async def stream_send(self, event: StreamEvent) -> None:
-        if isinstance(event, Response):
+        if isinstance(event, (InformationalResponse, Response)):
             self.connection.send_headers(
                 event.stream_id,
                 [(b":status", b"%d" % event.status_code)]
