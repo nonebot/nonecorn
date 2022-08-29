@@ -25,7 +25,7 @@ from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
 from ..events import Closed, Event, RawData, Updated, ZeroCopySend
-from ..typing import ASGIFramework, Event as IOEvent, TaskGroup, WorkerContext
+from ..typing import AppWrapper, Event as IOEvent, TaskGroup, WorkerContext
 from ..utils import filter_pseudo_headers
 
 BUFFER_HIGH_WATER = 2 * 2**14  # Twice the default max frame size (two frames worth)
@@ -82,7 +82,7 @@ class StreamBuffer:
 class H2Protocol:
     def __init__(
         self,
-        app: ASGIFramework,
+        app: AppWrapper,
         config: Config,
         context: WorkerContext,
         task_group: TaskGroup,

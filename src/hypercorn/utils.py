@@ -12,33 +12,16 @@ from functools import lru_cache
 from importlib import import_module
 from multiprocessing.synchronize import Event as EventType
 from pathlib import Path
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    cast,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Tuple,
-    TYPE_CHECKING,
-)
+from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
 
 try:
     from uvloop import Loop
 except ImportError:
     Loop = None
 
+from .app_wrappers import ASGIWrapper, WSGIWrapper
 from .config import Config
-from .typing import (
-    ASGI2Framework,
-    ASGI3Framework,
-    ASGIFramework,
-    ASGIReceiveCallable,
-    ASGISendCallable,
-    Scope,
-)
+from .typing import AppWrapper
 
 if TYPE_CHECKING:
     from .protocol.events import Request
@@ -107,13 +90,16 @@ def filter_pseudo_headers(headers: List[Tuple[bytes, bytes]]) -> List[Tuple[byte
     return filtered_headers
 
 
-def load_application(path: str) -> ASGIFramework:
-    try:
-        module_name, app_name = path.split(":", 1)
-    except ValueError:
+def load_application(path: str, wsgi_max_body_size: int) -> AppWrapper:
+    mode = None
+    if ":" not in path:
         module_name, app_name = path, "app"
-    except AttributeError:
-        raise NoAppError()
+    elif path.count(":") == 2:
+        mode, module_name, app_name = path.split(":", 2)
+        if mode not in {"asgi", "wsgi"}:
+            raise ValueError("Invalid mode, must be 'asgi', or 'wsgi'")
+    else:
+        module_name, app_name = path.split(":", 1)
 
     module_path = Path(module_name).resolve()
     sys.path.insert(0, str(module_path.parent))
@@ -128,11 +114,17 @@ def load_application(path: str) -> ASGIFramework:
             raise NoAppError()
         else:
             raise
-
     try:
-        return eval(app_name, vars(module))
+        app = eval(app_name, vars(module))
     except NameError:
         raise NoAppError()
+    else:
+        if mode is None:
+            mode = "asgi" if is_asgi(app) else "wsgi"
+        if mode == "asgi":
+            return ASGIWrapper(app)
+        else:
+            return WSGIWrapper(app, wsgi_max_body_size)
 
 
 async def observe_changes(sleep: Callable[[float], Awaitable[Any]]) -> None:
@@ -240,30 +232,6 @@ def repr_socket_addr(family: int, address: tuple) -> str:
         return f"{address}"
 
 
-async def invoke_asgi(
-    app: ASGIFramework, scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
-) -> None:
-    if _is_asgi_2(app):
-        scope["asgi"]["version"] = "2.0"
-        app = cast(ASGI2Framework, app)
-        asgi_instance = app(scope)
-        await asgi_instance(receive, send)
-    else:
-        scope["asgi"]["version"] = "3.0"
-        app = cast(ASGI3Framework, app)
-        await app(scope, receive, send)
-
-
-def _is_asgi_2(app: ASGIFramework) -> bool:
-    if inspect.isclass(app):
-        return True
-
-    if hasattr(app, "__call__") and inspect.iscoroutinefunction(app.__call__):  # type: ignore
-        return False
-
-    return not inspect.iscoroutinefunction(app)
-
-
 def valid_server_name(config: Config, request: "Request") -> bool:
     if len(config.server_names) == 0:
         return True
@@ -364,3 +332,10 @@ def can_sendfile(loop: asyncio.AbstractEventLoop, https: bool = False) -> bool:
         )
         and not https
     )
+
+def is_asgi(app: Any) -> bool:
+    if inspect.iscoroutinefunction(app):
+        return True
+    elif hasattr(app, "__call__"):
+        return inspect.iscoroutinefunction(app.__call__)
+    return False

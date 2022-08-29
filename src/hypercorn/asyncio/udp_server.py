@@ -8,8 +8,8 @@ from .task_group import TaskGroup
 from .worker_context import WorkerContext
 from ..config import Config
 from ..events import Event, RawData, ZeroCopySend
-from ..typing import ASGIFramework
-from ..utils import can_sendfile, is_ssl, parse_socket_addr
+from ..typing import AppWrapper
+from ..utils import parse_socket_addr
 
 if TYPE_CHECKING:
     # h3/Quic is an optional part of Hypercorn
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class UDPServer(asyncio.DatagramProtocol):
     def __init__(
         self,
-        app: ASGIFramework,
+        app: AppWrapper,
         loop: asyncio.AbstractEventLoop,
         config: Config,
         context: WorkerContext,
