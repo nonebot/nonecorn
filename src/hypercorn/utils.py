@@ -3,16 +3,27 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
-import platform
 import socket
 import ssl
 import sys
+import time
 from enum import Enum
 from functools import lru_cache
 from importlib import import_module
 from multiprocessing.synchronize import Event as EventType
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    cast,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    TYPE_CHECKING,
+)
 
 try:
     from uvloop import Loop
@@ -21,17 +32,18 @@ except ImportError:
 
 from .app_wrappers import ASGIWrapper, WSGIWrapper
 from .config import Config
-from .typing import AppWrapper
+from .typing import AppWrapper, ASGIFramework, Framework, WSGIFramework
+
+try:
+    from typing import Literal
+except ImportError:
+    from typing_extensions import Literal  # type: ignore
 
 if TYPE_CHECKING:
     from .protocol.events import Request
 
 
 class ShutdownError(Exception):
-    pass
-
-
-class MustReloadError(Exception):
     pass
 
 
@@ -91,11 +103,11 @@ def filter_pseudo_headers(headers: List[Tuple[bytes, bytes]]) -> List[Tuple[byte
 
 
 def load_application(path: str, wsgi_max_body_size: int) -> AppWrapper:
-    mode = None
+    mode: Optional[Literal["asgi", "wsgi"]] = None
     if ":" not in path:
         module_name, app_name = path, "app"
     elif path.count(":") == 2:
-        mode, module_name, app_name = path.split(":", 2)
+        mode, module_name, app_name = path.split(":", 2)  # type: ignore
         if mode not in {"asgi", "wsgi"}:
             raise ValueError("Invalid mode, must be 'asgi', or 'wsgi'")
     else:
@@ -119,15 +131,21 @@ def load_application(path: str, wsgi_max_body_size: int) -> AppWrapper:
     except NameError:
         raise NoAppError()
     else:
-        if mode is None:
-            mode = "asgi" if is_asgi(app) else "wsgi"
-        if mode == "asgi":
-            return ASGIWrapper(app)
-        else:
-            return WSGIWrapper(app, wsgi_max_body_size)
+        return wrap_app(app, wsgi_max_body_size, mode)
 
 
-async def observe_changes(sleep: Callable[[float], Awaitable[Any]]) -> None:
+def wrap_app(
+    app: Framework, wsgi_max_body_size: int, mode: Optional[Literal["asgi", "wsgi"]]
+) -> AppWrapper:
+    if mode is None:
+        mode = "asgi" if is_asgi(app) else "wsgi"
+    if mode == "asgi":
+        return ASGIWrapper(cast(ASGIFramework, app))
+    else:
+        return WSGIWrapper(cast(WSGIFramework, app), wsgi_max_body_size)
+
+
+def wait_for_changes(shutdown_event: EventType) -> None:
     last_updates: Dict[Path, float] = {}
     for module in list(sys.modules.values()):
         filename = getattr(module, "__file__", None)
@@ -139,58 +157,23 @@ async def observe_changes(sleep: Callable[[float], Awaitable[Any]]) -> None:
         except (FileNotFoundError, NotADirectoryError):
             pass
 
-    while True:
-        await sleep(1)
+    while not shutdown_event.is_set():
+        time.sleep(1)
 
         for index, (path, last_mtime) in enumerate(last_updates.items()):
             if index % 10 == 0:
                 # Yield to the event loop
-                await sleep(0)
+                time.sleep(0)
 
             try:
                 mtime = path.stat().st_mtime
             except FileNotFoundError:
-                # File deleted
-                raise MustReloadError()
+                return
             else:
                 if mtime > last_mtime:
-                    raise MustReloadError()
+                    return
                 else:
                     last_updates[path] = mtime
-
-
-def restart() -> None:
-    # Restart  this process (only safe for dev/debug)
-    executable = sys.executable
-    script_path = Path(sys.argv[0]).resolve()
-    args = sys.argv[1:]
-    main_package = sys.modules["__main__"].__package__
-
-    if main_package is None:
-        # Executed by filename
-        if platform.system() == "Windows":
-            if not script_path.exists() and script_path.with_suffix(".exe").exists():
-                # quart run
-                executable = str(script_path.with_suffix(".exe"))
-            else:
-                # python run.py
-                args.append(str(script_path))
-        else:
-            if script_path.is_file() and os.access(script_path, os.X_OK):
-                # hypercorn run:app --reload
-                executable = str(script_path)
-            else:
-                # python run.py
-                args.append(str(script_path))
-    else:
-        # Executed as a module e.g. python -m run
-        module = script_path.stem
-        import_name = main_package
-        if module != "__main__":
-            import_name = f"{main_package}.{module}"
-        args[:0] = ["-m", import_name.lstrip(".")]
-
-    os.execv(executable, [executable] + args)
 
 
 async def raise_shutdown(shutdown_event: Callable[..., Awaitable[None]]) -> None:
