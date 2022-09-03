@@ -355,7 +355,7 @@ class WSStream:
                 stream_id=self.stream_id,
                 status_code=status_code,
                 headers=headers,
-                reason="Switching Protocols",
+                reason="Switching Protocols" if status_code == 101 else "",
             )
         )
         await self.config.log.access(
@@ -368,7 +368,7 @@ class WSStream:
         body_suppressed = suppress_body("GET", self.response["status"])
         if self.state == ASGIWebsocketState.HANDSHAKE:
             headers = build_and_validate_headers(self.response["headers"])
-            reason = self.response["meta"].get("reason", "") if "meta" in self.response else ""
+            reason = self.response.get("reason", "")
             await self.send(
                 Response(
                     stream_id=self.stream_id,
