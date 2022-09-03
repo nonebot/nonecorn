@@ -187,9 +187,7 @@ class HTTPStream:
             }:
                 if self.state == ASGIHTTPState.REQUEST:
                     headers = build_and_validate_headers(self.response.get("headers", []))
-                    reason = (
-                        self.response["meta"].get("reason", "") if "meta" in self.response else ""
-                    )
+                    reason = self.response.get("reason", "")
                     await self.send(
                         Response(
                             stream_id=self.stream_id,
@@ -208,9 +206,7 @@ class HTTPStream:
                         Body(
                             stream_id=self.stream_id,
                             data=bytes(message.get("body", b"")),
-                            flush=message["meta"].get("flush", False)
-                            if "meta" in message
-                            else False,
+                            flush=message.get("flush", False),
                         )
                     )
 
@@ -221,12 +217,7 @@ class HTTPStream:
                             self.scope, self.response, time() - self.start_time
                         )
                         await self.send(
-                            EndBody(
-                                stream_id=self.stream_id,
-                                headers=message["meta"].get("headers", [])
-                                if "meta" in message
-                                else [],
-                            )
+                            EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
                         )
                         await self.send(StreamClosed(stream_id=self.stream_id))
             elif message["type"] == "http.response.zerocopysend" and self.state in {
@@ -235,9 +226,7 @@ class HTTPStream:
             }:
                 if self.state == ASGIHTTPState.REQUEST:
                     headers = build_and_validate_headers(self.response.get("headers", []))
-                    reason = (
-                        self.response["meta"].get("reason", "") if "meta" in self.response else ""
-                    )
+                    reason = self.response.get("reason", "")
                     await self.send(
                         Response(
                             stream_id=self.stream_id,
@@ -268,10 +257,7 @@ class HTTPStream:
                             self.scope, self.response, time() - self.start_time
                         )
                         await self.send(
-                            EndBody(
-                                stream_id=self.stream_id,
-                                headers=message["meta"].get("headers") if "meta" in message else [],
-                            )
+                            EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
                         )
                         await self.send(StreamClosed(stream_id=self.stream_id))
             elif message["type"] == "http.response.trailers" and self.state in {

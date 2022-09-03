@@ -316,6 +316,7 @@ def can_sendfile(loop: asyncio.AbstractEventLoop, https: bool = False) -> bool:
         and not https
     )
 
+
 def is_asgi(app: Any) -> bool:
     if inspect.iscoroutinefunction(app):
         return True
