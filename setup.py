@@ -32,7 +32,7 @@ TESTS_REQUIRE = [
 
 setup(
     name="nonecorn",
-    version="0.14.1dev1",
+    version="0.14.2dev1",
     python_requires=">=3.7",
     description="A ASGI Server forked from hypercorn with more extra feature beyond ASGI",
     long_description=long_description,
