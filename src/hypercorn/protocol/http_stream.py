@@ -76,6 +76,7 @@ class HTTPStream:
         self.stream_id = stream_id
         self.task_group = task_group
         self.tls = tls
+        self.trailers_expected: bool = False
 
     @property
     def idle(self) -> bool:
@@ -148,6 +149,7 @@ class HTTPStream:
         else:
             if message["type"] == "http.response.start" and self.state == ASGIHTTPState.REQUEST:
                 self.response = message
+                self.trailers_expected = message.get("trailers", False)
             elif (
                 message["type"] == "http.response.push"
                 and self.scope["http_version"] in PUSH_VERSIONS
@@ -206,11 +208,11 @@ class HTTPStream:
                         Body(
                             stream_id=self.stream_id,
                             data=bytes(message.get("body", b"")),
-                            flush=message.get("flush", False),
+                            flush=message.get("flush", False) or self.trailers_expected,
                         )
                     )
 
-                if not message.get("more_body", False):
+                if not message.get("more_body", False) and not self.trailers_expected:
                     if self.state != ASGIHTTPState.CLOSED:
                         self.state = ASGIHTTPState.CLOSED
                         await self.config.log.access(
@@ -250,7 +252,7 @@ class HTTPStream:
                         )
                     )
 
-                if not message.get("more_body", False):
+                if not message.get("more_body", False) and not self.trailers_expected:
                     if self.state != ASGIHTTPState.CLOSED:
                         self.state = ASGIHTTPState.CLOSED
                         await self.config.log.access(
@@ -265,17 +267,17 @@ class HTTPStream:
                 ASGIHTTPState.RESPONSE,
             }:
                 headers = message.get("headers", [])
-                more_body = message.get("more_body", False)
-                if not more_body:
+                more_trailers = message.get("more_trailers", False)
+                if not more_trailers:
                     await self.config.log.access(
                         self.scope, self.response, time() - self.start_time
                     )
                 await self.send(
                     TrailerHeadersSend(
-                        stream_id=self.stream_id, headers=headers, end_stream=not more_body
+                        stream_id=self.stream_id, headers=headers, end_stream=not more_trailers
                     )
                 )
-                if not more_body:
+                if not more_trailers:
                     if self.scope["http_version"] == "2":
                         await self.send(
                             EndBody(

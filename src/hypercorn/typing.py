@@ -76,7 +76,7 @@ class HTTPResponseStartEvent(TypedDict):
     type: Literal["http.response.start"]
     status: int
     headers: Iterable[Tuple[bytes, bytes]]
-
+    trailers: bool
 
 class HTTPResponseBodyEvent(TypedDict):
     type: Literal["http.response.body"]
@@ -99,10 +99,10 @@ class HTTPZeroCopySendEvent(TypedDict):
     more_body: Optional[bool]
 
 
-class HTTPTrailerHeadersSendEvent(TypedDict):
-    type: Literal["http.response.trailers"]  # todo
+class HTTPResponseTrailersEvent(TypedDict):
+    type: Literal["http.response.trailers"]
     headers: Iterable[Tuple[bytes, bytes]]
-    more_body: Optional[bool] = False
+    more_trailers: bool
 
 
 class HTTPEarlyHintEvent(TypedDict):
@@ -200,7 +200,7 @@ ASGISendEvent = Union[
     HTTPResponseBodyEvent,
     HTTPServerPushEvent,
     HTTPZeroCopySendEvent,
-    HTTPTrailerHeadersSendEvent,
+    HTTPResponseTrailersEvent,
     HTTPEarlyHintEvent,
     HTTPDisconnectEvent,
     WebsocketAcceptEvent,
