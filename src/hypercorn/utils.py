@@ -664,7 +664,7 @@ def get_tls_info(ssl_object: ssl.SSLObject) -> Optional[Dict]:
     return None
 
 
-def is_ssl(transport: asyncio.Transport) -> bool:
+def is_ssl(transport: asyncio.BaseTransport) -> bool:
     return bool(transport.get_extra_info("sslcontext"))
 
 

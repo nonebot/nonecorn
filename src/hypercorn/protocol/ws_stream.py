@@ -190,7 +190,6 @@ class WSStream:
         send: Callable[[Event], Awaitable[None]],
         stream_id: int,
         tls: Optional[dict] = None,
-        app_state: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.app = app
         self.app_put: Optional[Callable] = None
@@ -214,7 +213,6 @@ class WSStream:
         self.connection: Connection
         self.handshake: Handshake
         self.trailers_expected: bool = False
-        self.app_state = app_state
 
     @property
     def idle(self) -> bool:
@@ -239,13 +237,13 @@ class WSStream:
                 "headers": event.headers,
                 "client": self.client,
                 "server": self.server,
+                "state": event.state,
                 "subprotocols": self.handshake.subprotocols or [],
                 "extensions": {
                     "websocket.http.response": {},
                     "websocket.multiframe": {},
                     "websocket.http.response.trailers": {},
                 },
-                "state": self.app_state,
             }
             if (
                 can_sendfile(asyncio.get_running_loop(), self.scheme == "wss")

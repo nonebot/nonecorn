@@ -8,7 +8,7 @@ from .task_group import TaskGroup
 from .worker_context import WorkerContext
 from ..config import Config
 from ..events import Event, RawData, ZeroCopySend
-from ..typing import AppWrapper
+from ..typing import AppWrapper, ConnectionState, LifespanState
 from ..utils import parse_socket_addr
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ class UDPServer(asyncio.DatagramProtocol):
         loop: asyncio.AbstractEventLoop,
         config: Config,
         context: WorkerContext,
-        app_state: Dict[str, Any],
+        state: LifespanState,
     ) -> None:
         self.app = app
         self.config = config
@@ -32,7 +32,7 @@ class UDPServer(asyncio.DatagramProtocol):
         self.protocol: "QuicProtocol"
         self.protocol_queue: asyncio.Queue = asyncio.Queue(10)
         self.transport: Optional[asyncio.DatagramTransport] = None
-        self.app_state = app_state
+        self.state = state
 
     def connection_made(self, transport: asyncio.DatagramTransport) -> None:  # type: ignore
         self.transport = transport
@@ -55,9 +55,9 @@ class UDPServer(asyncio.DatagramProtocol):
                 self.config,
                 self.context,
                 task_group,
+                ConnectionState(self.state.copy()),
                 server,
                 self.protocol_send,
-                self.app_state,
             )
 
             while not self.context.terminated.is_set() or not self.protocol.idle:

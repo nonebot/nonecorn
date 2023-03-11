@@ -10,7 +10,7 @@ from .worker_context import AsyncioSingleTask, WorkerContext
 from ..config import Config
 from ..events import Closed, Event, RawData, Updated, ZeroCopySend
 from ..protocol import ProtocolWrapper
-from ..typing import AppWrapper
+from ..typing import AppWrapper, ConnectionState, LifespanState
 from ..utils import can_sendfile, get_tls_info, is_ssl, parse_socket_addr
 
 MAX_RECV = 2**16
@@ -23,9 +23,9 @@ class TCPServer:
         loop: asyncio.AbstractEventLoop,
         config: Config,
         context: WorkerContext,
+        state: LifespanState,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
-        app_state: Dict[str, Any],
     ) -> None:
         self.app = app
         self.config = config
@@ -38,8 +38,8 @@ class TCPServer:
         if can_sendfile(loop, is_ssl(writer.transport)):
             self.writer.transport.set_write_buffer_limits(0)
         self.send_lock = asyncio.Lock()
+        self.state = state
         self.idle_task = AsyncioSingleTask()
-        self.app_state = app_state
 
     def __await__(self) -> Generator[Any, None, None]:
         return self.run().__await__()
@@ -69,13 +69,13 @@ class TCPServer:
                     self.config,
                     self.context,
                     task_group,
+                    ConnectionState(self.state.copy()),
                     ssl,
                     client,
                     server,
                     self.protocol_send,
                     alpn_protocol,
                     tls,
-                    self.app_state,
                 )
                 await self.protocol.initiate()
                 await self.idle_task.restart(task_group, self._idle_timeout)

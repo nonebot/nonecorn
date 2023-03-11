@@ -23,7 +23,7 @@ from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
 from ..events import Closed, Event, RawData, Updated, ZeroCopySend
-from ..typing import AppWrapper, H11SendableEvent, TaskGroup, WorkerContext
+from ..typing import AppWrapper, ConnectionState, H11SendableEvent, TaskGroup, WorkerContext
 
 STREAM_ID = 1
 
@@ -100,12 +100,12 @@ class H11Protocol:
         config: Config,
         context: WorkerContext,
         task_group: TaskGroup,
+        connection_state: ConnectionState,
         ssl: bool,
         client: Optional[Tuple[str, int]],
         server: Optional[Tuple[str, int]],
         send: Callable[[Event], Awaitable[None]],
         tls: Optional[dict] = None,
-        app_state: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.app = app
         self.can_read = context.event_class()
@@ -122,7 +122,7 @@ class H11Protocol:
         self.tls = tls
         self.stream: Optional[Union[HTTPStream, WSStream]] = None
         self.task_group = task_group
-        self.app_state = app_state
+        self.connection_state = connection_state
 
     async def initiate(self) -> None:
         pass
@@ -252,7 +252,6 @@ class H11Protocol:
                 self.stream_send,
                 STREAM_ID,
                 self.tls,
-                self.app_state,
             )
             self.connection = H11WSConnection(cast(h11.Connection, self.connection))
         else:
@@ -267,7 +266,6 @@ class H11Protocol:
                 self.stream_send,
                 STREAM_ID,
                 self.tls,
-                self.app_state,
             )
 
         if self.config.h11_pass_raw_headers:
@@ -282,6 +280,7 @@ class H11Protocol:
                 http_version=request.http_version.decode(),
                 method=request.method.decode("ascii").upper(),
                 raw_path=request.target,
+                state=self.connection_state,
             )
         )
         self.keep_alive_requests += 1

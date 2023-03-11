@@ -61,7 +61,6 @@ class HTTPStream:
         send: Callable[[Event], Awaitable[None]],
         stream_id: int,
         tls: Optional[dict] = None,
-        app_state: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.app = app
         self.client = client
@@ -79,7 +78,6 @@ class HTTPStream:
         self.task_group = task_group
         self.tls = tls
         self.trailers_expected: bool = False
-        self.app_state = app_state
 
     @property
     def idle(self) -> bool:
@@ -104,8 +102,8 @@ class HTTPStream:
                 "headers": event.headers,
                 "client": self.client,
                 "server": self.server,
+                "state": event.state,
                 "extensions": {},
-                "state": self.app_state,
             }
             self.scope["extensions"]["http.response.trailers"] = {}
             self.scope["extensions"]["http.response.pathsend"] = {}
@@ -172,6 +170,7 @@ class HTTPStream:
                         http_version=self.scope["http_version"],
                         method="GET",
                         raw_path=message["path"].encode(),
+                        state=self.scope["state"],
                     )
                 )
             elif (

@@ -5,7 +5,7 @@ from functools import partial
 from typing import Any, Callable, Dict
 
 from ..config import Config
-from ..typing import AppWrapper, ASGIReceiveEvent, ASGISendEvent, LifespanScope
+from ..typing import AppWrapper, ASGIReceiveEvent, ASGISendEvent, LifespanScope, LifespanState
 from ..utils import LifespanFailureError, LifespanTimeoutError
 
 
@@ -14,7 +14,13 @@ class UnexpectedMessageError(Exception):
 
 
 class Lifespan:
-    def __init__(self, app: AppWrapper, config: Config, loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(
+        self,
+        app: AppWrapper,
+        config: Config,
+        loop: asyncio.AbstractEventLoop,
+        lifespan_state: LifespanState,
+    ) -> None:
         self.app = app
         self.config = config
         self.startup = asyncio.Event()
@@ -22,12 +28,12 @@ class Lifespan:
         self.app_queue: asyncio.Queue = asyncio.Queue(config.max_app_queue_size)
         self.supported = True
         self.loop = loop
+        self.state = lifespan_state
 
         # This mimics the Trio nursery.start task_status and is
         # required to ensure the support has been checked before
         # waiting on timeouts.
         self._started = asyncio.Event()
-        self.state: Dict[str, Any] = {}
 
     async def handle_lifespan(self) -> None:
         self._started.set()

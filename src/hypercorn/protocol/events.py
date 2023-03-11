@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Tuple
 
+from hypercorn.typing import ConnectionState
+
 
 @dataclass(frozen=True)
 class Event:
@@ -15,6 +17,7 @@ class Request(Event):
     http_version: str
     method: str
     raw_path: bytes
+    state: ConnectionState
 
 
 @dataclass(frozen=True)

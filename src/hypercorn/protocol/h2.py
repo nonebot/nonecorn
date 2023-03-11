@@ -25,7 +25,7 @@ from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
 from ..events import Closed, Event, RawData, Updated, ZeroCopySend
-from ..typing import AppWrapper, Event as IOEvent, TaskGroup, WorkerContext
+from ..typing import AppWrapper, ConnectionState, Event as IOEvent, TaskGroup, WorkerContext
 from ..utils import filter_pseudo_headers
 
 BUFFER_HIGH_WATER = 2 * 2**14  # Twice the default max frame size (two frames worth)
@@ -86,12 +86,12 @@ class H2Protocol:
         config: Config,
         context: WorkerContext,
         task_group: TaskGroup,
+        connection_state: ConnectionState,
         ssl: bool,
         client: Optional[Tuple[str, int]],
         server: Optional[Tuple[str, int]],
         send: Callable[[Event], Awaitable[None]],
         tls: Optional[dict] = None,
-        app_state: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.app = app
         self.client = client
@@ -99,6 +99,7 @@ class H2Protocol:
         self.config = config
         self.context = context
         self.task_group = task_group
+        self.connection_state = connection_state
 
         self.connection = h2.connection.H2Connection(
             config=h2.config.H2Configuration(client_side=False, header_encoding=None)
@@ -123,7 +124,6 @@ class H2Protocol:
         self.priority = priority.PriorityTree()
         self.stream_buffers: Dict[int, StreamBuffer] = {}
         self.tls = tls
-        self.app_state = app_state
 
     @property
     def idle(self) -> bool:
@@ -362,7 +362,6 @@ class H2Protocol:
                 self.stream_send,
                 request.stream_id,
                 self.tls,
-                self.app_state,
             )
         else:
             self.streams[request.stream_id] = HTTPStream(
@@ -376,7 +375,6 @@ class H2Protocol:
                 self.stream_send,
                 request.stream_id,
                 self.tls,
-                self.app_state,
             )
         self.stream_buffers[request.stream_id] = StreamBuffer(self.context.event_class)
         try:
@@ -394,6 +392,7 @@ class H2Protocol:
                 http_version="2",
                 method=method,
                 raw_path=raw_path,
+                state=self.connection_state,
             )
         )
         self.keep_alive_requests += 1

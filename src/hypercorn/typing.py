@@ -9,6 +9,7 @@ from typing import (
     Dict,
     Iterable,
     Literal,
+    NewType,
     Optional,
     Protocol,
     Tuple,
@@ -22,9 +23,18 @@ import h11
 
 from .config import Config, Sockets
 
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
+
 H11SendableEvent = Union[h11.Data, h11.EndOfMessage, h11.InformationalResponse, h11.Response]
 
 WorkerFunc = Callable[[Config, Optional[Sockets], Optional[EventType]], None]
+
+LifespanState = Dict[str, Any]
+
+ConnectionState = NewType("ConnectionState", Dict[str, Any])
 
 
 class ASGIVersions(TypedDict, total=False):
@@ -45,8 +55,8 @@ class HTTPScope(TypedDict):
     headers: Iterable[Tuple[bytes, bytes]]
     client: Optional[Tuple[str, int]]
     server: Optional[Tuple[str, Optional[int]]]
+    state: ConnectionState
     extensions: Dict[str, dict]
-    state: Dict[str, Any]
 
 
 class WebsocketScope(TypedDict):
@@ -62,14 +72,14 @@ class WebsocketScope(TypedDict):
     client: Optional[Tuple[str, int]]
     server: Optional[Tuple[str, Optional[int]]]
     subprotocols: Iterable[str]
+    state: ConnectionState
     extensions: Dict[str, dict]
-    state: Dict[str, Any]
 
 
 class LifespanScope(TypedDict):
     type: Literal["lifespan"]
     asgi: ASGIVersions
-    state: Dict[str, Any]
+    state: LifespanState
 
 
 WWWScope = Union[HTTPScope, WebsocketScope]
@@ -86,14 +96,14 @@ class HTTPResponseStartEvent(TypedDict):
     type: Literal["http.response.start"]
     status: int
     headers: Iterable[Tuple[bytes, bytes]]
-    trailers: bool
+    trailers: NotRequired[bool]
 
 
 class HTTPResponseBodyEvent(TypedDict):
     type: Literal["http.response.body"]
     body: bytes
     more_body: bool
-    headers: Optional[Iterable[Tuple[bytes, bytes]]] = None
+    headers: NotRequired[Iterable[Tuple[bytes, bytes]]]
 
 
 class HTTPServerPushEvent(TypedDict):
@@ -113,7 +123,7 @@ class HTTPZeroCopySendEvent(TypedDict):
 class HTTPResponseTrailersEvent(TypedDict):
     type: Literal["http.response.trailers"]
     headers: Iterable[Tuple[bytes, bytes]]
-    more_trailers: bool
+    more_trailers: NotRequired[bool]
 
 
 class HTTPEarlyHintEvent(TypedDict):

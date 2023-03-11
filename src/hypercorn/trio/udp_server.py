@@ -8,7 +8,7 @@ from .task_group import TaskGroup
 from .worker_context import WorkerContext
 from ..config import Config
 from ..events import Event, RawData
-from ..typing import AppWrapper
+from ..typing import AppWrapper, ConnectionState, LifespanState
 from ..utils import parse_socket_addr
 
 MAX_RECV = 2**16
@@ -20,14 +20,14 @@ class UDPServer:
         app: AppWrapper,
         config: Config,
         context: WorkerContext,
+        state: LifespanState,
         socket: trio.socket.socket,
-        app_state: Dict[str, Any],
     ) -> None:
         self.app = app
         self.config = config
         self.context = context
         self.socket = trio.socket.from_stdlib_socket(socket)
-        self.app_state = app_state
+        self.state = state
 
     async def run(
         self, task_status: trio._core._run._TaskStatus = trio.TASK_STATUS_IGNORED
@@ -42,9 +42,9 @@ class UDPServer:
                 self.config,
                 self.context,
                 task_group,
+                ConnectionState(self.state.copy()),
                 server,
                 self.protocol_send,
-                self.app_state,
             )
 
             while not self.context.terminated.is_set() or not self.protocol.idle:
