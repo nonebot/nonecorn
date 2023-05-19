@@ -100,37 +100,48 @@ class HypercornAsyncioWorker(Worker):
     def init_signals(self):
         for s in self.SIGNALS:
             signal.signal(s, signal.SIG_DFL)
+        signal.signal(signal.SIGUSR1, self.handle_usr1)
+        signal.siginterrupt(signal.SIGUSR1, False)
+
+    def _install_sigquit_handler(self) -> None:
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(signal.SIGQUIT, self.handle_exit, signal.SIGQUIT, None)
+
+    async def _asyncio_serve(self):
+        self._install_sigquit_handler()
+        await asyncio.wait(
+            [asyncio_serve(self.wsgi, self.config), self.asyncio_callback_notify()],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+    async def _trio_serve(self):
+        import trio
+
+        from hypercorn.trio import serve as trio_serve
+
+        async with trio.open_nursery() as nursery:
+
+            async def wrap(func: Callable[[], Awaitable[Any]]) -> None:
+                await func()
+                nursery.cancel_scope.cancel()
+
+            nursery.start_soon(wrap, partial(trio_serve, self.wsgi, self.config))
+            await wrap(self.trio_callback_notify)
 
     def run(self):
-        asgi_app = self.wsgi
-        self.config.sockets = transfer_sock(self.sockets)
+        self.config.sockets = transfer_sock(
+            self.sockets
+        )  # patch hypercorn's socket, do not create, use gunicorn's
         if self.config.worker_class == "trio":
             import trio
 
-            from hypercorn.trio import serve as trio_serve
-
-            async def start():
-                async with trio.open_nursery() as nursery:
-
-                    async def wrap(func: Callable[[], Awaitable[Any]]) -> None:
-                        await func()
-                        nursery.cancel_scope.cancel()
-
-                    nursery.start_soon(wrap, partial(trio_serve, asgi_app, self.config))
-                    await wrap(self.trio_callback_notify)
-
-            trio.run(start)
+            trio.run(self._trio_serve())
             return
         if self.config.worker_class == "uvloop":
             import uvloop
 
             uvloop.install()
-        asyncio.run(
-            asyncio.wait(
-                [asyncio_serve(asgi_app, self.config), self.asyncio_callback_notify()],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-        )
+        asyncio.run(self._asyncio_serve())
 
     async def asyncio_callback_notify(self):
         while True:
