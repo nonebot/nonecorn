@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from enum import auto, Enum
 from time import time
-from typing import Awaitable, Callable, Optional, Tuple
+from typing import Awaitable, Callable, Optional, Tuple, Dict, Any
 from urllib.parse import unquote
 
 from .events import (
@@ -60,6 +60,7 @@ class HTTPStream:
         send: Callable[[Event], Awaitable[None]],
         stream_id: int,
         tls: Optional[dict] = None,
+        app_state: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.app = app
         self.client = client
@@ -77,6 +78,7 @@ class HTTPStream:
         self.task_group = task_group
         self.tls = tls
         self.trailers_expected: bool = False
+        self.app_state = app_state
 
     @property
     def idle(self) -> bool:
@@ -102,6 +104,7 @@ class HTTPStream:
                 "client": self.client,
                 "server": self.server,
                 "extensions": {},
+                "state": self.app_state,
             }
             self.scope["extensions"]["http.response.trailers"] = {}
             if event.http_version in PUSH_VERSIONS:

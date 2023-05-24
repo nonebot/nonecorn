@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union, Any
 
 import h2
 import h2.connection
@@ -91,6 +91,7 @@ class H2Protocol:
         server: Optional[Tuple[str, int]],
         send: Callable[[Event], Awaitable[None]],
         tls: Optional[dict] = None,
+        app_state: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.app = app
         self.client = client
@@ -121,6 +122,7 @@ class H2Protocol:
         self.priority = priority.PriorityTree()
         self.stream_buffers: Dict[int, StreamBuffer] = {}
         self.tls = tls
+        self.app_state = app_state
 
     @property
     def idle(self) -> bool:
@@ -351,6 +353,7 @@ class H2Protocol:
                 self.stream_send,
                 request.stream_id,
                 self.tls,
+                self.app_state
             )
         else:
             self.streams[request.stream_id] = HTTPStream(
@@ -364,6 +367,7 @@ class H2Protocol:
                 self.stream_send,
                 request.stream_id,
                 self.tls,
+                self.app_state
             )
         self.stream_buffers[request.stream_id] = StreamBuffer(self.context.event_class)
         try:

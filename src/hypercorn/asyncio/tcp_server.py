@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from ssl import SSLError
-from typing import Any, Generator, IO, Optional
+from typing import Any, Generator, Optional, Dict
 
 from .task_group import TaskGroup
 from .worker_context import WorkerContext
@@ -25,6 +25,7 @@ class TCPServer:
         context: WorkerContext,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
+        app_state: Dict[str, Any]
     ) -> None:
         self.app = app
         self.config = config
@@ -40,6 +41,7 @@ class TCPServer:
         self.idle_lock = asyncio.Lock()
 
         self._idle_handle: Optional[asyncio.Task] = None
+        self.app_state = app_state
 
     def __await__(self) -> Generator[Any, None, None]:
         return self.run().__await__()
@@ -74,6 +76,7 @@ class TCPServer:
                     self.protocol_send,
                     alpn_protocol,
                     tls,
+                    self.app_state
                 )
                 await self.protocol.initiate()
                 await self._start_idle()
