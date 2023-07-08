@@ -238,7 +238,7 @@ class WSStream:
                 self.app_put = await self.task_group.spawn_app(
                     self.app, self.config, self.scope, self.app_send
                 )
-                await self.app_put({"type": "websocket.connect"})  # type: ignore
+                await self.app_put({"type": "websocket.connect"})
         elif isinstance(event, (Body, Data)):
             self.connection.receive_data(event.data)
             await self._handle_events()
@@ -264,7 +264,7 @@ class WSStream:
                     self.scope, {"status": 500, "headers": []}, time() - self.start_time
                 )
             elif self.state == ASGIWebsocketState.CONNECTED:
-                await self._send_wsproto_event(CloseConnection(code=CloseReason.ABNORMAL_CLOSURE))
+                await self._send_wsproto_event(CloseConnection(code=CloseReason.INTERNAL_ERROR))
             await self.send(StreamClosed(stream_id=self.stream_id))
         else:
             if message["type"] == "websocket.accept" and self.state == ASGIWebsocketState.HANDSHAKE:
