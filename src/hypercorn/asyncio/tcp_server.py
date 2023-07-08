@@ -134,10 +134,11 @@ class TCPServer:
                 TimeoutError,
                 SSLError,
             ):
-                await self.protocol.handle(Closed())
                 break
             else:
                 await self.protocol.handle(RawData(data))
+
+        await self.protocol.handle(Closed())
 
     async def _close(self) -> None:
         try:
@@ -148,7 +149,7 @@ class TCPServer:
         try:
             self.writer.close()
             await self.writer.wait_closed()
-        except (BrokenPipeError, ConnectionResetError, RuntimeError):
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, RuntimeError):
             pass  # Already closed
 
         await self._stop_idle()
