@@ -58,6 +58,7 @@ class HypercornAsyncioWorker(Worker):
             "umask": self.cfg.umask,
             "user": self.cfg.user,
             "h11_max_incomplete_size": getattr(self.cfg, "h11_max_incomplete_size", None),
+            "h11_pass_raw_headers": getattr(self.cfg, "h11_pass_raw_headers", None),
             "h2_max_concurrent_streams": getattr(self.cfg, "h2_max_concurrent_streams", None),
             "h2_max_header_list_size": getattr(self.cfg, "h2_max_header_list_size", None),
             "h2_max_inbound_frame_size": getattr(self.cfg, "h2_max_inbound_frame_size", None),
