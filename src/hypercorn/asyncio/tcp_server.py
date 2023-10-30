@@ -99,7 +99,6 @@ class TCPServer:
             await self.zerocopysend(event.file, event.offset, event.count)
         elif isinstance(event, Closed):
             await self._close()
-            await self.protocol.handle(Closed())
         elif isinstance(event, Updated):
             if event.idle:
                 await self._start_idle()
