@@ -4,7 +4,7 @@ import asyncio
 import os
 from enum import auto, Enum
 from time import time
-from typing import Awaitable, Callable, Optional, Tuple, Dict, Any
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 from urllib.parse import unquote
 
 from .events import (
@@ -279,10 +279,9 @@ class HTTPStream:
                     )
                     self.state = ASGIHTTPState.RESPONSE
 
-                if (
-                    not suppress_body(self.scope["method"], int(self.response["status"]))
-                    and os.path.exists(message["path"])
-                ):
+                if not suppress_body(
+                    self.scope["method"], int(self.response["status"])
+                ) and os.path.exists(message["path"]):
                     if "http.response.zerocopysend" in self.scope["extensions"]:
                         if os.name == "nt":
                             open_mode = os.O_RDONLY | os.O_BINARY
@@ -301,9 +300,7 @@ class HTTPStream:
                     else:
                         with open(message["path"], "rb") as f:
                             while chunk := f.read(65536):
-                                await self.send(
-                                    Body(stream_id=self.stream_id, data=chunk)
-                                )
+                                await self.send(Body(stream_id=self.stream_id, data=chunk))
 
                 if self.state != ASGIHTTPState.CLOSED:
                     self.state = ASGIHTTPState.CLOSED
