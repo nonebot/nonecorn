@@ -108,6 +108,7 @@ class HTTPStream:
                 "state": self.app_state,
             }
             self.scope["extensions"]["http.response.trailers"] = {}
+            self.scope["extensions"]["http.response.pathsend"] = {}
             if event.http_version in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.push"] = {}
             if (

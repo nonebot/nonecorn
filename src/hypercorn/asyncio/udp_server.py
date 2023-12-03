@@ -72,10 +72,10 @@ class UDPServer(asyncio.DatagramProtocol):
         if count is None:
             count = os.stat(file.fileno()).st_size - offset
         try:
-            await self.loop.sendfile(self.writer.transport, file, offset, count)
+            await self.loop.sendfile(self.transport, file, offset, count)
         except (NotImplementedError, AttributeError):
             os.sendfile(
-                self.writer.transport.get_extra_info("socket").fileno(),
+                self.transport.get_extra_info("socket").fileno(),
                 file.fileno(),
                 offset,
                 count,
