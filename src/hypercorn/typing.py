@@ -102,6 +102,11 @@ class HTTPEarlyHintEvent(TypedDict):
     links: Iterable[bytes]
 
 
+class HTTPResponsePathsendEvent(TypedDict):
+    type: Literal["http.response.pathsend"]
+    path: str
+
+
 class HTTPDisconnectEvent(TypedDict):
     type: Literal["http.disconnect"]
 

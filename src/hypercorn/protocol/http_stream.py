@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os.path
 from enum import auto, Enum
 from time import time
 from typing import Awaitable, Callable, Optional, Tuple
@@ -188,6 +189,38 @@ class HTTPStream:
                         )
                         await self.send(EndBody(stream_id=self.stream_id))
                         await self.send(StreamClosed(stream_id=self.stream_id))
+            elif message["type"] == "http.response.pathsend" and self.state in {
+                ASGIHTTPState.REQUEST,
+                ASGIHTTPState.RESPONSE,
+            }:
+                if self.state == ASGIHTTPState.REQUEST:
+                    headers = build_and_validate_headers(self.response.get("headers", []))
+                    await self.send(
+                        Response(
+                            stream_id=self.stream_id,
+                            headers=headers,
+                            status_code=int(self.response["status"]),
+                        )
+                    )
+                    self.state = ASGIHTTPState.RESPONSE
+
+                if (
+                        not suppress_body(self.scope["method"], int(self.response["status"]))
+                        and os.path.exists(message["path"])
+                ):
+                    with open(message["path"], "rb") as f:
+                        while chunk := f.read(65536):  # todo use zerocopy
+                            await self.send(
+                                Body(stream_id=self.stream_id, data=chunk)
+                            )
+
+                if self.state != ASGIHTTPState.CLOSED:
+                    self.state = ASGIHTTPState.CLOSED
+                    await self.config.log.access(
+                        self.scope, self.response, time() - self.start_time
+                    )
+                    await self.send(EndBody(stream_id=self.stream_id))
+                    await self.send(StreamClosed(stream_id=self.stream_id))
             else:
                 raise UnexpectedMessageError(self.state, message["type"])
 
