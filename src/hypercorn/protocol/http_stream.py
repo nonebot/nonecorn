@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from enum import auto, Enum
 from time import time
 from typing import Awaitable, Callable, Optional, Tuple, Dict, Any
@@ -110,7 +111,7 @@ class HTTPStream:
             if event.http_version in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.push"] = {}
             if (
-                can_sendfile(asyncio.get_event_loop(), self.scheme == "https")
+                can_sendfile(asyncio.get_running_loop(), self.scheme == "https")
                 and event.http_version not in PUSH_VERSIONS
             ):
                 self.scope["extensions"]["http.response.zerocopysend"] = {}
@@ -263,6 +264,54 @@ class HTTPStream:
                             EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
                         )
                         await self.send(StreamClosed(stream_id=self.stream_id))
+            elif message["type"] == "http.response.pathsend" and self.state in {
+                ASGIHTTPState.REQUEST,
+                ASGIHTTPState.RESPONSE,
+            }:
+                if self.state == ASGIHTTPState.REQUEST:
+                    headers = build_and_validate_headers(self.response.get("headers", []))
+                    await self.send(
+                        Response(
+                            stream_id=self.stream_id,
+                            headers=headers,
+                            status_code=int(self.response["status"]),
+                        )
+                    )
+                    self.state = ASGIHTTPState.RESPONSE
+
+                if (
+                    not suppress_body(self.scope["method"], int(self.response["status"]))
+                    and os.path.exists(message["path"])
+                ):
+                    if "http.response.zerocopysend" in self.scope["extensions"]:
+                        if os.name == "nt":
+                            open_mode = os.O_RDONLY | os.O_BINARY
+                        else:
+                            open_mode = os.O_RDONLY
+                        fd = os.open(message["path"], open_mode)
+                        try:
+                            await self.send(
+                                ZeroCopySend(
+                                    stream_id=self.stream_id,
+                                    file=fd,
+                                )
+                            )
+                        finally:
+                            os.close(fd)
+                    else:
+                        with open(message["path"], "rb") as f:
+                            while chunk := f.read(65536):
+                                await self.send(
+                                    Body(stream_id=self.stream_id, data=chunk)
+                                )
+
+                if self.state != ASGIHTTPState.CLOSED:
+                    self.state = ASGIHTTPState.CLOSED
+                    await self.config.log.access(
+                        self.scope, self.response, time() - self.start_time
+                    )
+                    await self.send(EndBody(stream_id=self.stream_id))
+                    await self.send(StreamClosed(stream_id=self.stream_id))
             elif message["type"] == "http.response.trailers" and self.state in {
                 ASGIHTTPState.REQUEST,
                 ASGIHTTPState.RESPONSE,

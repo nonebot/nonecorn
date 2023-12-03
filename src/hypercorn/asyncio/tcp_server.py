@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from ssl import SSLError
-from typing import Any, Generator, Optional, Dict
+from typing import Any, Generator, Optional, Dict, IO
 
 from .task_group import TaskGroup
 from .worker_context import WorkerContext
