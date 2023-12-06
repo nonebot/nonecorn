@@ -316,16 +316,15 @@ class HTTPStream:
             }:
                 headers = message.get("headers", [])
                 more_trailers = message.get("more_trailers", False)
-                if not more_trailers:
-                    await self.config.log.access(
-                        self.scope, self.response, time() - self.start_time
-                    )
                 await self.send(
                     TrailerHeadersSend(
                         stream_id=self.stream_id, headers=headers, end_stream=not more_trailers
                     )
                 )
                 if not more_trailers:
+                    await self.config.log.access(
+                        self.scope, self.response, time() - self.start_time
+                    )
                     if self.scope["http_version"] == "2":
                         await self.send(
                             EndBody(

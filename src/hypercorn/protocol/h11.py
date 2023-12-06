@@ -166,7 +166,7 @@ class H11Protocol:
                 event_ = SendfileData(file, offset, count)
                 for data in self.connection.send_with_data_passthrough(h11.Data(data=event_)):
                     if isinstance(data, SendfileData):
-                        await self.send(ZeroCopySend(file=file, offset=offset, count=count))
+                        await self.send(ZeroCopySend(file=data.file, offset=data.offset, count=data.count))
                     else:
                         await self.send(RawData(data=data))
         elif isinstance(event, EndBody):
