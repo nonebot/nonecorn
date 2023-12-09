@@ -17,6 +17,7 @@ INSTALL_REQUIRES = [
     "priority",
     "toml",
     "typing_extensions >= 3.7.4; python_version < '3.8'",
+    "taskgroup; python_version < '3.11'",
     "wsproto >= 0.14.0",
 ]
 
@@ -32,7 +33,7 @@ TESTS_REQUIRE = [
 
 setup(
     name="nonecorn",
-    version="0.14.4dev1",
+    version="0.15.0dev1",
     python_requires=">=3.7",
     description="A ASGI Server forked from hypercorn with more extra feature beyond ASGI",
     long_description=long_description,
