@@ -19,7 +19,9 @@ multiprocessing.allow_connection_pickling()
 spawn = multiprocessing.get_context("spawn")
 
 
-def run(config: Config) -> None:
+def run(config: Config) -> int:
+    exit_code = 0
+
     if config.pid_path is not None:
         write_pid_file(config.pid_path)
 
@@ -76,21 +78,24 @@ def run(config: Config) -> None:
             if config.use_reloader:
                 wait_for_changes(shutdown_event)
                 shutdown_event.set()
-                # Recreate the sockets to be used again in the next
-                # iteration of the loop.
-                sockets = config.create_sockets()
             else:
                 active = False
 
         for process in processes:
             process.join()
+            if process.exitcode != 0:
+                exit_code = process.exitcode
+
         for process in processes:
             process.terminate()
 
         for sock in sockets.secure_sockets:
             sock.close()
+
         for sock in sockets.insecure_sockets:
             sock.close()
+
+    return exit_code
 
 
 def start_processes(
