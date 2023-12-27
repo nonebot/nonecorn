@@ -112,6 +112,7 @@ class H11Protocol:
             h11.SERVER, max_incomplete_event_size=self.config.h11_max_incomplete_size
         )
         self.context = context
+        self.keep_alive_requests = 0
         self.send = send
         self.server = server
         self.ssl = ssl
@@ -275,6 +276,7 @@ class H11Protocol:
                 raw_path=request.target,
             )
         )
+        self.keep_alive_requests += 1
 
     async def _send_h11_event(self, event: H11SendableEvent) -> None:
         try:
@@ -305,6 +307,7 @@ class H11Protocol:
             not self.context.terminated.is_set()
             and self.connection.our_state is h11.DONE
             and self.connection.their_state is h11.DONE
+            and self.keep_alive_requests <= self.config.keep_alive_max_requests
         ):
             try:
                 self.connection.start_next_cycle()
