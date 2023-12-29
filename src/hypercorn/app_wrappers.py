@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from functools import partial
 from io import BytesIO
 from typing import Callable, List, Optional, Tuple
@@ -84,6 +85,8 @@ class WSGIWrapper:
 
     def run_app(self, environ: dict, send: Callable) -> None:
         headers: List[Tuple[bytes, bytes]]
+        headers_sent = False
+        response_started = False
         status_code: Optional[int] = None
 
         def start_response(
@@ -91,7 +94,7 @@ class WSGIWrapper:
             response_headers: List[Tuple[str, str]],
             exc_info: Optional[Exception] = None,
         ) -> None:
-            nonlocal headers, status_code
+            nonlocal headers, response_started, status_code
 
             raw, _ = status.split(" ", 1)
             status_code = int(raw)
@@ -99,10 +102,23 @@ class WSGIWrapper:
                 (name.lower().encode("ascii"), value.encode("ascii"))
                 for name, value in response_headers
             ]
-            send({"type": "http.response.start", "status": status_code, "headers": headers})
+            response_started = True
 
-        for output in self.app(environ, start_response):
-            send({"type": "http.response.body", "body": output, "more_body": True})
+        response_body = self.app(environ, start_response)
+
+        if not response_started:
+            raise RuntimeError("WSGI app did not call start_response")
+
+        try:
+            for output in response_body:
+                if not headers_sent:
+                    send({"type": "http.response.start", "status": status_code, "headers": headers})
+                    headers_sent = True
+
+                send({"type": "http.response.body", "body": output, "more_body": True})
+        finally:
+            if hasattr(response_body, "close"):
+                response_body.close()
 
 
 def _build_environ(scope: HTTPScope, body: bytes) -> dict:
@@ -126,7 +142,7 @@ def _build_environ(scope: HTTPScope, body: bytes) -> dict:
         "wsgi.version": (1, 0),
         "wsgi.url_scheme": scope.get("scheme", "http"),
         "wsgi.input": BytesIO(body),
-        "wsgi.errors": BytesIO(),
+        "wsgi.errors": sys.stdout,
         "wsgi.multithread": True,
         "wsgi.multiprocess": True,
         "wsgi.run_once": False,
