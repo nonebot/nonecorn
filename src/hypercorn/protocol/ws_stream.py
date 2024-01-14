@@ -20,7 +20,7 @@ from wsproto.frame_protocol import CloseReason
 from wsproto.handshake import server_extensions_handshake, WEBSOCKET_VERSION
 from wsproto.utilities import generate_accept_token, LocalProtocolError, split_comma_header
 
-from .events import Body, Data, EndBody, EndData, Event, Request, Response, StreamClosed
+from .events import Body, Data, EndBody, EndData, Event, Request, Response, StreamClosed, TrailerHeadersSend
 from ..config import Config
 from ..typing import (
     AppWrapper,
@@ -31,6 +31,7 @@ from ..typing import (
     WebsocketResponseStartEvent,
     WebsocketScope,
     WorkerContext,
+    HTTPResponseTrailersEvent,
 )
 from ..utils import (
     build_and_validate_headers,
@@ -196,6 +197,7 @@ class WSStream:
 
         self.connection: Connection
         self.handshake: Handshake
+        self.trailers_expected: bool = False
         self.app_state = app_state
 
     @property
@@ -222,7 +224,7 @@ class WSStream:
                 "client": self.client,
                 "server": self.server,
                 "subprotocols": self.handshake.subprotocols or [],
-                "extensions": {"websocket.http.response": {}, "websocket.multiframe": {}},
+                "extensions": {"websocket.http.response": {}, "websocket.multiframe": {}, "http.response.trailers": {}},
                 "state": self.app_state,
             }
             if self.scheme == "wss" and self.tls:
@@ -274,11 +276,17 @@ class WSStream:
                 and self.state == ASGIWebsocketState.HANDSHAKE
             ):
                 self.response = message
+                self.trailers_expected = message.get("trailers", False)
             elif message["type"] == "websocket.http.response.body" and self.state in {
                 ASGIWebsocketState.HANDSHAKE,
                 ASGIWebsocketState.RESPONSE,
             }:
                 await self._send_rejection(message)
+            elif message["type"] == "http.response.trailers" and self.state in {
+                ASGIWebsocketState.HANDSHAKE,
+                ASGIWebsocketState.RESPONSE,
+            }:
+                await self._send_rejection_trailer(message)
             elif message["type"] == "websocket.send" and self.state == ASGIWebsocketState.CONNECTED:
                 event: WSProtoEvent
                 if message.get("bytes") is not None:
@@ -387,9 +395,28 @@ class WSStream:
             self.state = ASGIWebsocketState.RESPONSE
         if not body_suppressed:
             await self.send(Body(stream_id=self.stream_id, data=bytes(message.get("body", b""))))
-        if not message.get("more_body", False):
+        if not message.get("more_body", False) and not self.trailers_expected:
             self.state = ASGIWebsocketState.HTTPCLOSED
             await self.send(EndBody(stream_id=self.stream_id))
+            await self.config.log.access(self.scope, self.response, time() - self.start_time)
+
+    async def _send_rejection_trailer(self, message: HTTPResponseTrailersEvent):
+        headers = message.get("headers", [])
+        more_trailers = message.get("more_trailers", False)
+        await self.send(
+            TrailerHeadersSend(
+                stream_id=self.stream_id, headers=headers, end_stream=not more_trailers
+            )
+        )
+        if not more_trailers:
+            self.state = ASGIWebsocketState.HTTPCLOSED
+            if self.scope["http_version"] == "2":
+                await self.send(
+                    EndBody(
+                        stream_id=self.stream_id,
+                        headers=[],
+                    )
+                )
             await self.config.log.access(self.scope, self.response, time() - self.start_time)
 
     async def _send_pings(self) -> None:
