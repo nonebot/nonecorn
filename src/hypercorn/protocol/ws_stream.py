@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from enum import auto, Enum
 from io import BytesIO, StringIO
 from time import time
-from typing import Awaitable, Callable, Iterable, List, Optional, Tuple, Union, Dict, Any
+from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, Union
 from urllib.parse import unquote
 
 from wsproto.connection import Connection, ConnectionState, ConnectionType
@@ -20,21 +21,34 @@ from wsproto.frame_protocol import CloseReason
 from wsproto.handshake import server_extensions_handshake, WEBSOCKET_VERSION
 from wsproto.utilities import generate_accept_token, LocalProtocolError, split_comma_header
 
-from .events import Body, Data, EndBody, EndData, Event, Request, Response, StreamClosed, TrailerHeadersSend
+from .events import (
+    Body,
+    Data,
+    EndBody,
+    EndData,
+    Event,
+    Request,
+    Response,
+    StreamClosed,
+    TrailerHeadersSend,
+    ZeroCopySend,
+)
 from ..config import Config
 from ..typing import (
     AppWrapper,
     ASGISendEvent,
+    HTTPResponseTrailersEvent,
+    HTTPZeroCopySendEvent,
     TaskGroup,
     WebsocketAcceptEvent,
     WebsocketResponseBodyEvent,
     WebsocketResponseStartEvent,
     WebsocketScope,
     WorkerContext,
-    HTTPResponseTrailersEvent,
 )
 from ..utils import (
     build_and_validate_headers,
+    can_sendfile,
     suppress_body,
     UnexpectedMessageError,
     valid_server_name,
@@ -224,9 +238,18 @@ class WSStream:
                 "client": self.client,
                 "server": self.server,
                 "subprotocols": self.handshake.subprotocols or [],
-                "extensions": {"websocket.http.response": {}, "websocket.multiframe": {}, "http.response.trailers": {}},
+                "extensions": {
+                    "websocket.http.response": {},
+                    "websocket.multiframe": {},
+                    "websocket.http.response.trailers": {},
+                },
                 "state": self.app_state,
             }
+            if (
+                can_sendfile(asyncio.get_running_loop(), self.scheme == "wss")
+                and event.http_version == "1.1"
+            ):
+                self.scope["extensions"]["websocket.http.response.zerocopysend"] = {}
             if self.scheme == "wss" and self.tls:
                 self.scope["extensions"]["tls"] = self.tls
 
@@ -282,7 +305,12 @@ class WSStream:
                 ASGIWebsocketState.RESPONSE,
             }:
                 await self._send_rejection(message)
-            elif message["type"] == "http.response.trailers" and self.state in {
+            elif message["type"] == "websocket.http.response.zerocopysend" and self.state in {
+                ASGIWebsocketState.HANDSHAKE,
+                ASGIWebsocketState.RESPONSE,
+            }:
+                await self._send_rejection_zerocopy(message)
+            elif message["type"] == "websocket.http.response.trailers" and self.state in {
                 ASGIWebsocketState.HANDSHAKE,
                 ASGIWebsocketState.RESPONSE,
             }:
@@ -400,7 +428,35 @@ class WSStream:
             await self.send(EndBody(stream_id=self.stream_id))
             await self.config.log.access(self.scope, self.response, time() - self.start_time)
 
-    async def _send_rejection_trailer(self, message: HTTPResponseTrailersEvent):
+    async def _send_rejection_zerocopy(self, message: HTTPZeroCopySendEvent) -> None:
+        body_suppressed = suppress_body("GET", self.response["status"])
+        if self.state == ASGIWebsocketState.HANDSHAKE:
+            headers = build_and_validate_headers(self.response["headers"])
+            reason = self.response.get("reason", "")
+            await self.send(
+                Response(
+                    stream_id=self.stream_id,
+                    status_code=int(self.response["status"]),
+                    headers=headers,
+                    reason=reason,
+                )
+            )
+            self.state = ASGIWebsocketState.RESPONSE
+        if not body_suppressed:
+            await self.send(
+                ZeroCopySend(
+                    stream_id=self.stream_id,
+                    file=message.get("file"),
+                    offset=message.get("offset"),
+                    count=message.get("count"),
+                )
+            )
+        if not message.get("more_body", False) and not self.trailers_expected:
+            self.state = ASGIWebsocketState.HTTPCLOSED
+            await self.send(EndBody(stream_id=self.stream_id))
+            await self.config.log.access(self.scope, self.response, time() - self.start_time)
+
+    async def _send_rejection_trailer(self, message: HTTPResponseTrailersEvent) -> None:
         headers = message.get("headers", [])
         more_trailers = message.get("more_trailers", False)
         await self.send(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from itertools import chain
-from typing import Awaitable, Callable, cast, Optional, Tuple, Type, Union, Dict, Any
+from typing import Any, Awaitable, Callable, cast, Dict, List, Optional, Tuple, Type, Union
 
 import h11
 
@@ -89,6 +89,9 @@ class H11WSConnection:
     def start_next_cycle(self) -> None:
         pass
 
+    def send_with_data_passthrough(self, event) -> Optional[List[bytes]]:
+        return self.h11_connection.send_with_data_passthrough(event)
+
 
 class H11Protocol:
     def __init__(
@@ -167,7 +170,9 @@ class H11Protocol:
                 event_ = SendfileData(file, offset, count)
                 for data in self.connection.send_with_data_passthrough(h11.Data(data=event_)):
                     if isinstance(data, SendfileData):
-                        await self.send(ZeroCopySend(file=data.file, offset=data.offset, count=data.count))
+                        await self.send(
+                            ZeroCopySend(file=data.file, offset=data.offset, count=data.count)
+                        )
                     else:
                         await self.send(RawData(data=data))
         elif isinstance(event, EndBody):
@@ -244,7 +249,7 @@ class H11Protocol:
                 self.stream_send,
                 STREAM_ID,
                 self.tls,
-                self.app_state
+                self.app_state,
             )
             self.connection = H11WSConnection(cast(h11.Connection, self.connection))
         else:
@@ -259,7 +264,7 @@ class H11Protocol:
                 self.stream_send,
                 STREAM_ID,
                 self.tls,
-                self.app_state
+                self.app_state,
             )
 
         if self.config.h11_pass_raw_headers:
