@@ -248,16 +248,16 @@ class H2SyncStream(Protocol):
     scope: dict
 
     def data_received(self, data: bytes) -> None:
-        ...
+        pass
 
     def ended(self) -> None:
-        ...
+        pass
 
     def reset(self) -> None:
-        ...
+        pass
 
     def close(self) -> None:
-        ...
+        pass
 
     async def handle_request(
         self,
@@ -266,23 +266,23 @@ class H2SyncStream(Protocol):
         client: Tuple[str, int],
         server: Tuple[str, int],
     ) -> None:
-        ...
+        pass
 
 
 class H2AsyncStream(Protocol):
     scope: dict
 
     async def data_received(self, data: bytes) -> None:
-        ...
+        pass
 
     async def ended(self) -> None:
-        ...
+        pass
 
     async def reset(self) -> None:
-        ...
+        pass
 
     async def close(self) -> None:
-        ...
+        pass
 
     async def handle_request(
         self,
@@ -291,24 +291,24 @@ class H2AsyncStream(Protocol):
         client: Tuple[str, int],
         server: Tuple[str, int],
     ) -> None:
-        ...
+        pass
 
 
 class Event(Protocol):
     def __init__(self) -> None:
-        ...
+        pass
 
     async def clear(self) -> None:
-        ...
+        pass
 
     async def set(self) -> None:
-        ...
+        pass
 
     async def wait(self) -> None:
-        ...
+        pass
 
     def is_set(self) -> bool:
-        ...
+        pass
 
 
 class WorkerContext(Protocol):
@@ -317,15 +317,15 @@ class WorkerContext(Protocol):
     terminated: Event
 
     async def mark_request(self) -> None:
-        ...
+        pass
 
     @staticmethod
     async def sleep(wait: Union[float, int]) -> None:
-        ...
+        pass
 
     @staticmethod
     def time() -> float:
-        ...
+        pass
 
 
 class TaskGroup(Protocol):
@@ -336,16 +336,16 @@ class TaskGroup(Protocol):
         scope: Scope,
         send: Callable[[Optional[ASGISendEvent]], Awaitable[None]],
     ) -> Callable[[ASGIReceiveEvent], Awaitable[None]]:
-        ...
+        pass
 
     def spawn(self, func: Callable, *args: Any) -> None:
-        ...
+        pass
 
     async def __aenter__(self) -> TaskGroup:
-        ...
+        pass
 
     async def __aexit__(self, exc_type: type, exc_value: BaseException, tb: TracebackType) -> None:
-        ...
+        pass
 
 
 class ResponseSummary(TypedDict):
@@ -362,4 +362,4 @@ class AppWrapper(Protocol):
         sync_spawn: Callable,
         call_soon: Callable,
     ) -> None:
-        ...
+        pass

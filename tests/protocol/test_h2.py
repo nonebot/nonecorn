@@ -20,7 +20,9 @@ except ImportError:
 
 
 @pytest.mark.asyncio
-async def test_stream_buffer_push_and_pop(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_stream_buffer_push_and_pop() -> None:
+    event_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+
     stream_buffer = StreamBuffer(EventWrapper)
 
     async def _push_over_limit() -> bool:
@@ -36,7 +38,9 @@ async def test_stream_buffer_push_and_pop(event_loop: asyncio.AbstractEventLoop)
 
 
 @pytest.mark.asyncio
-async def test_stream_buffer_drain(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_stream_buffer_drain() -> None:
+    event_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+
     stream_buffer = StreamBuffer(EventWrapper)
     await stream_buffer.push(b"a" * 10)
 
@@ -51,7 +55,7 @@ async def test_stream_buffer_drain(event_loop: asyncio.AbstractEventLoop) -> Non
 
 
 @pytest.mark.asyncio
-async def test_stream_buffer_closed(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_stream_buffer_closed() -> None:
     stream_buffer = StreamBuffer(EventWrapper)
     await stream_buffer.close()
     await stream_buffer._is_empty.wait()
@@ -62,7 +66,7 @@ async def test_stream_buffer_closed(event_loop: asyncio.AbstractEventLoop) -> No
 
 
 @pytest.mark.asyncio
-async def test_stream_buffer_complete(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_stream_buffer_complete() -> None:
     stream_buffer = StreamBuffer(EventWrapper)
     await stream_buffer.push(b"a" * 10)
     assert not stream_buffer.complete
