@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Any, Dict
+
 import trio
 
 from .task_group import TaskGroup
@@ -37,7 +38,13 @@ class UDPServer:
         server = parse_socket_addr(self.socket.family, self.socket.getsockname())
         async with TaskGroup() as task_group:
             self.protocol = QuicProtocol(
-                self.app, self.config, self.context, task_group, server, self.protocol_send, self.app_state
+                self.app,
+                self.config,
+                self.context,
+                task_group,
+                server,
+                self.protocol_send,
+                self.app_state,
             )
 
             while not self.context.terminated.is_set() or not self.protocol.idle:

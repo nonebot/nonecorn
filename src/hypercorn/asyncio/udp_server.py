@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import IO, Optional, Tuple, Dict, Any, TYPE_CHECKING
+from typing import Any, Dict, IO, Optional, Tuple, TYPE_CHECKING
 
 from .task_group import TaskGroup
 from .worker_context import WorkerContext
@@ -51,7 +51,13 @@ class UDPServer(asyncio.DatagramProtocol):
         server = parse_socket_addr(socket.family, socket.getsockname())
         async with TaskGroup(self.loop) as task_group:
             self.protocol = QuicProtocol(
-                self.app, self.config, self.context, task_group, server, self.protocol_send, self.app_state
+                self.app,
+                self.config,
+                self.context,
+                task_group,
+                server,
+                self.protocol_send,
+                self.app_state,
             )
 
             while not self.context.terminated.is_set() or not self.protocol.idle:

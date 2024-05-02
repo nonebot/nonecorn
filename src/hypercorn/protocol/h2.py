@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union, Any
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import h2
 import h2.connection
@@ -357,7 +357,7 @@ class H2Protocol:
                 self.stream_send,
                 request.stream_id,
                 self.tls,
-                self.app_state
+                self.app_state,
             )
         else:
             self.streams[request.stream_id] = HTTPStream(
@@ -371,7 +371,7 @@ class H2Protocol:
                 self.stream_send,
                 request.stream_id,
                 self.tls,
-                self.app_state
+                self.app_state,
             )
         self.stream_buffers[request.stream_id] = StreamBuffer(self.context.event_class)
         try:

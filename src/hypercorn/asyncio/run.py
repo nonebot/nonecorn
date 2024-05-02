@@ -106,7 +106,7 @@ async def worker_serve(
         task = asyncio.current_task(loop)
         server_tasks.add(task)
         task.add_done_callback(server_tasks.discard)
-        await TCPServer(app, loop, config, context, reader, writer,  lifespan.state.copy())
+        await TCPServer(app, loop, config, context, reader, writer, lifespan.state.copy())
 
     servers = []
     for sock in sockets.secure_sockets:

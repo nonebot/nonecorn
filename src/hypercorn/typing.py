@@ -88,6 +88,7 @@ class HTTPResponseStartEvent(TypedDict):
     headers: Iterable[Tuple[bytes, bytes]]
     trailers: bool
 
+
 class HTTPResponseBodyEvent(TypedDict):
     type: Literal["http.response.body"]
     body: bytes

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable, Optional, Tuple, Union, Dict, Any
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union
 
 from .h2 import H2Protocol
 from .h11 import H2CProtocolRequiredError, H2ProtocolAssumedError, H11Protocol

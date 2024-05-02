@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import inf
-from typing import Any, Generator, Optional, Dict
+from typing import Any, Dict, Generator, Optional
 
 import trio
 
@@ -18,7 +18,12 @@ MAX_RECV = 2**16
 
 class TCPServer:
     def __init__(
-        self, app: AppWrapper, config: Config, context: WorkerContext, stream: trio.abc.Stream, app_state: Dict[str, Any]
+        self,
+        app: AppWrapper,
+        config: Config,
+        context: WorkerContext,
+        stream: trio.abc.Stream,
+        app_state: Dict[str, Any],
     ) -> None:
         self.app = app
         self.config = config
@@ -65,7 +70,7 @@ class TCPServer:
                     server,
                     self.protocol_send,
                     alpn_protocol,
-                    self.app_state
+                    self.app_state,
                 )
                 await self.protocol.initiate()
                 await self._start_idle()

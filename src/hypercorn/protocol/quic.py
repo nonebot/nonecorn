@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Awaitable, Callable, Dict, Optional, Tuple, Any
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from aioquic.buffer import Buffer
 from aioquic.h3.connection import H3_ALPN
