@@ -321,7 +321,7 @@ class HypercornAsyncioWorker(Worker):
             "include_date_header": getattr(self.cfg, "include_date_header", None),
             "include_server_header": getattr(self.cfg, "include_server_header", None),
             "max_app_queue_size": getattr(self.cfg, "max_app_queue_size", None),
-            "max_requests": getattr(self.cfg, "max_requests", None),
+            "max_requests": self.cfg.max_requests or None,
             "max_requests_jitter": getattr(self.cfg, "max_requests_jitter", None),
             "pid_path": getattr(self.cfg, "pidfile", None),
             "root_path": getattr(self.cfg, "root_path", None),
@@ -383,7 +383,10 @@ class HypercornAsyncioWorker(Worker):
     async def _asyncio_serve(self):
         self._install_sigquit_handler()
         await asyncio.wait(
-            [asyncio_serve(self.wsgi, self.config), self.asyncio_callback_notify()],
+            [
+                asyncio.create_task(asyncio_serve(self.wsgi, self.config)),
+                asyncio.create_task(self.asyncio_callback_notify()),
+            ],
             return_when=asyncio.FIRST_COMPLETED,
         )
 
