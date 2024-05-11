@@ -239,7 +239,7 @@ TLS_VERSION_MAP: Dict[str, int] = {
 }
 
 
-def get_tls_info(writer: asyncio.StreamWriter) -> Optional[Dict]:
+def get_tls_info(ssl_object: ssl.SSLObject) -> Optional[Dict]:
     """
     # server_cert: Unable to set from transport information
     # client_cert_chain: Just the peercert, currently no access to the full cert chain
@@ -257,7 +257,6 @@ def get_tls_info(writer: asyncio.StreamWriter) -> Optional[Dict]:
         "cipher_suite": None,
     }
 
-    ssl_object = writer.get_extra_info("ssl_object", default=None)
     peercert = ssl_object.getpeercert()
 
     if peercert:

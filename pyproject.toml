@@ -41,6 +41,7 @@ uvloop = { version = "*", markers = "platform_system != 'Windows'", optional = t
 wsproto = ">=0.14.0"
 
 [tool.poetry.dev-dependencies]
+httpx = "*"
 hypothesis = "*"
 mock = "*"
 pytest = "*"
@@ -54,7 +55,7 @@ hypercorn = "hypercorn.__main__:main"
 [tool.poetry.extras]
 docs = ["pydata_sphinx_theme", "sphinxcontrib_mermaid"]
 h3 = ["aioquic"]
-trio = ["exceptiongroup", "trio"]
+trio = ["trio"]
 uvloop = ["uvloop"]
 
 [tool.black]

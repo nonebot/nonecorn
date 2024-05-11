@@ -3,6 +3,7 @@ from __future__ import annotations
 from math import inf
 from typing import Any, Dict, Generator, Optional
 
+import exceptiongroup
 import trio
 
 from .task_group import TaskGroup
@@ -11,7 +12,7 @@ from ..config import Config
 from ..events import Closed, Event, RawData, Updated
 from ..protocol import ProtocolWrapper
 from ..typing import AppWrapper
-from ..utils import parse_socket_addr
+from ..utils import parse_socket_addr, get_tls_info
 
 MAX_RECV = 2**16
 
@@ -48,35 +49,46 @@ class TCPServer:
                 return  # Handshake failed
             alpn_protocol = self.stream.selected_alpn_protocol()
             socket = self.stream.transport_stream.socket
+            ssl_object = self.stream._ssl_object
+            tls = get_tls_info(ssl_object)
+            if tls:
+                tls["server_cert"] = self.config.cert_pem
             ssl = True
         except AttributeError:  # Not SSL
             alpn_protocol = "http/1.1"
             socket = self.stream.socket
+            tls = None
             ssl = False
 
-        try:
-            client = parse_socket_addr(socket.family, socket.getpeername())
-            server = parse_socket_addr(socket.family, socket.getsockname())
+        def log_handler(e: Exception) -> None:
+            if self.config.log.error_logger is not None:
+                self.config.log.error_logger.exception("Internal hypercorn error", exc_info=e)
 
-            async with TaskGroup() as task_group:
-                self._task_group = task_group
-                self.protocol = ProtocolWrapper(
-                    self.app,
-                    self.config,
-                    self.context,
-                    task_group,
-                    ssl,
-                    client,
-                    server,
-                    self.protocol_send,
-                    alpn_protocol,
-                    self.app_state,
-                )
-                await self.protocol.initiate()
-                await self._start_idle()
-                await self._read_data()
-        except OSError:
-            pass
+        try:
+            with exceptiongroup.catch(
+                {OSError: lambda e: None, Exception: log_handler}  # type: ignore
+            ):
+                client = parse_socket_addr(socket.family, socket.getpeername())
+                server = parse_socket_addr(socket.family, socket.getsockname())
+
+                async with TaskGroup() as task_group:
+                    self._task_group = task_group
+                    self.protocol = ProtocolWrapper(
+                        self.app,
+                        self.config,
+                        self.context,
+                        task_group,
+                        ssl,
+                        client,
+                        server,
+                        self.protocol_send,
+                        alpn_protocol,
+                        tls,
+                        self.app_state,
+                    )
+                    await self.protocol.initiate()
+                    await self._start_idle()
+                    await self._read_data()
         finally:
             await self._close()
 

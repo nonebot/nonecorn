@@ -57,7 +57,7 @@ class TCPServer:
             if ssl_object is not None:
                 ssl = True
                 alpn_protocol = ssl_object.selected_alpn_protocol()
-                tls = get_tls_info(self.writer)
+                tls = get_tls_info(ssl_object)
                 if tls:
                     tls["server_cert"] = self.config.cert_pem
             else:
