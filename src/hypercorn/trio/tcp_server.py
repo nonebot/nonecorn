@@ -12,7 +12,7 @@ from ..config import Config
 from ..events import Closed, Event, RawData, Updated
 from ..protocol import ProtocolWrapper
 from ..typing import AppWrapper
-from ..utils import parse_socket_addr, get_tls_info
+from ..utils import get_tls_info, parse_socket_addr
 
 MAX_RECV = 2**16
 

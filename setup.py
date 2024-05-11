@@ -16,7 +16,7 @@ INSTALL_REQUIRES = [
     "h2 >= 3.1.0",
     "priority",
     "tomli; python_version < '3.11'",
-    "exceptiongroup >= 1.1.0"
+    "exceptiongroup >= 1.1.0",
     "typing_extensions >= 3.7.4; python_version < '3.8'",
     "taskgroup; python_version < '3.11'",
     "wsproto >= 0.14.0",
@@ -34,7 +34,7 @@ TESTS_REQUIRE = [
 
 setup(
     name="nonecorn",
-    version="0.16.0dev6",
+    version="0.16.0dev7",
     python_requires=">=3.7",
     description="A ASGI Server forked from hypercorn with more extra feature beyond ASGI",
     long_description=long_description,
@@ -55,6 +55,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
