@@ -71,6 +71,7 @@ class FrameTooLargeError(Exception):
 
 class Handshake:
     def __init__(self, headers: List[Tuple[bytes, bytes]], http_version: str) -> None:
+        self.accepted = False
         self.http_version = http_version
         self.connection_tokens: Optional[List[str]] = None
         self.extensions: Optional[List[str]] = None
@@ -144,6 +145,7 @@ class Handshake:
 
             headers.append((name, value))
 
+        self.accepted = True
         return status_code, headers, Connection(ConnectionType.SERVER, extensions)
 
 
@@ -264,6 +266,9 @@ class WSStream:
                     self.app, self.config, self.scope, self.app_send
                 )
                 await self.app_put({"type": "websocket.connect"})
+        elif isinstance(event, (Body, Data)) and not self.handshake.accepted:
+            await self._send_error_response(400)
+            self.closed = True
         elif isinstance(event, (Body, Data)):
             self.connection.receive_data(event.data)
             await self._handle_events()
