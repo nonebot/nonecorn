@@ -152,6 +152,15 @@ class HTTPStream:
             if message["type"] == "http.response.start" and self.state == ASGIHTTPState.REQUEST:
                 self.response = message
                 self.trailers_expected = message.get("trailers", False)
+                headers = build_and_validate_headers(self.response.get("headers", []))
+                await self.send(
+                    Response(
+                        stream_id=self.stream_id,
+                        headers=headers,
+                        status_code=int(self.response["status"]),
+                    )
+                )
+                self.state = ASGIHTTPState.RESPONSE
             elif (
                 message["type"] == "http.response.push"
                 and self.scope["http_version"] in PUSH_VERSIONS
@@ -186,23 +195,7 @@ class HTTPStream:
                         status_code=103,
                     )
                 )
-            elif message["type"] == "http.response.body" and self.state in {
-                ASGIHTTPState.REQUEST,
-                ASGIHTTPState.RESPONSE,
-            }:
-                if self.state == ASGIHTTPState.REQUEST:
-                    headers = build_and_validate_headers(self.response.get("headers", []))
-                    reason = self.response.get("reason", "")
-                    await self.send(
-                        Response(
-                            stream_id=self.stream_id,
-                            headers=headers,
-                            status_code=int(self.response["status"]),
-                            reason=reason,
-                        )
-                    )
-                    self.state = ASGIHTTPState.RESPONSE
-
+            elif message["type"] == "http.response.body" and self.state == ASGIHTTPState.RESPONSE:
                 if (
                     not suppress_body(self.scope["method"], int(self.response["status"]))
                     and message.get("body", b"") != b""
@@ -225,23 +218,7 @@ class HTTPStream:
                             EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
                         )
                         await self.send(StreamClosed(stream_id=self.stream_id))
-            elif message["type"] == "http.response.zerocopysend" and self.state in {
-                ASGIHTTPState.REQUEST,
-                ASGIHTTPState.RESPONSE,
-            }:
-                if self.state == ASGIHTTPState.REQUEST:
-                    headers = build_and_validate_headers(self.response.get("headers", []))
-                    reason = self.response.get("reason", "")
-                    await self.send(
-                        Response(
-                            stream_id=self.stream_id,
-                            headers=headers,
-                            status_code=int(self.response["status"]),
-                            reason=reason,
-                        )
-                    )
-                    self.state = ASGIHTTPState.RESPONSE
-
+            elif message["type"] == "http.response.zerocopysend" and self.state == ASGIHTTPState.RESPONSE:
                 if (
                     not suppress_body(self.scope["method"], int(self.response["status"]))
                     and message.get("file") is not None
@@ -265,21 +242,7 @@ class HTTPStream:
                             EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
                         )
                         await self.send(StreamClosed(stream_id=self.stream_id))
-            elif message["type"] == "http.response.pathsend" and self.state in {
-                ASGIHTTPState.REQUEST,
-                ASGIHTTPState.RESPONSE,
-            }:
-                if self.state == ASGIHTTPState.REQUEST:
-                    headers = build_and_validate_headers(self.response.get("headers", []))
-                    await self.send(
-                        Response(
-                            stream_id=self.stream_id,
-                            headers=headers,
-                            status_code=int(self.response["status"]),
-                        )
-                    )
-                    self.state = ASGIHTTPState.RESPONSE
-
+            elif message["type"] == "http.response.pathsend" and self.state == ASGIHTTPState.RESPONSE:
                 if not suppress_body(
                     self.scope["method"], int(self.response["status"])
                 ) and os.path.exists(message["path"]):
@@ -310,10 +273,7 @@ class HTTPStream:
                     )
                     await self.send(EndBody(stream_id=self.stream_id))
                     await self.send(StreamClosed(stream_id=self.stream_id))
-            elif message["type"] == "http.response.trailers" and self.state in {
-                ASGIHTTPState.REQUEST,
-                ASGIHTTPState.RESPONSE,
-            }:
+            elif message["type"] == "http.response.trailers" and self.state == ASGIHTTPState.RESPONSE:
                 headers = message.get("headers", [])
                 more_trailers = message.get("more_trailers", False)
                 await self.send(
