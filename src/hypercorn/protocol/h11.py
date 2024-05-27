@@ -16,7 +16,7 @@ from .events import (
     Request,
     Response,
     StreamClosed,
-    TrailerHeadersSend,
+    Trailers,
     ZeroCopySend as StreamZeroCopySend,
 )
 from .http_stream import HTTPStream
@@ -180,7 +180,7 @@ class H11Protocol:
                         await self.send(RawData(data=data))
         elif isinstance(event, EndBody):
             await self._send_h11_event(h11.EndOfMessage(headers=event.headers))
-        elif isinstance(event, TrailerHeadersSend):
+        elif isinstance(event, Trailers):
             await self._send_h11_event(h11.EndOfMessage(headers=event.headers))
         elif isinstance(event, Data):
             await self.send(RawData(data=event.data))

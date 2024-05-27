@@ -22,6 +22,11 @@ import h11
 
 from .config import Config, Sockets
 
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
+
 H11SendableEvent = Union[h11.Data, h11.EndOfMessage, h11.InformationalResponse, h11.Response]
 
 WorkerFunc = Callable[[Config, Optional[Sockets], Optional[EventType]], None]
@@ -86,7 +91,7 @@ class HTTPResponseStartEvent(TypedDict):
     type: Literal["http.response.start"]
     status: int
     headers: Iterable[Tuple[bytes, bytes]]
-    trailers: bool
+    trailers: NotRequired[bool]
 
 
 class HTTPResponseBodyEvent(TypedDict):
@@ -94,6 +99,12 @@ class HTTPResponseBodyEvent(TypedDict):
     body: bytes
     more_body: bool
     headers: Optional[Iterable[Tuple[bytes, bytes]]] = None
+
+
+class HTTPResponseTrailersEvent(TypedDict):
+    type: Literal["http.response.trailers"]
+    headers: Iterable[Tuple[bytes, bytes]]
+    more_trailers: NotRequired[bool]
 
 
 class HTTPServerPushEvent(TypedDict):
@@ -214,6 +225,7 @@ ASGIReceiveEvent = Union[
 ASGISendEvent = Union[
     HTTPResponseStartEvent,
     HTTPResponseBodyEvent,
+    HTTPResponseTrailersEvent,
     HTTPServerPushEvent,
     HTTPZeroCopySendEvent,
     HTTPResponseTrailersEvent,
@@ -314,6 +326,7 @@ class Event(Protocol):
 
 class WorkerContext(Protocol):
     event_class: Type[Event]
+    single_task_class: Type[SingleTask]
     terminate: Event
     terminated: Event
 
@@ -363,4 +376,15 @@ class AppWrapper(Protocol):
         sync_spawn: Callable,
         call_soon: Callable,
     ) -> None:
+        pass
+
+
+class SingleTask(Protocol):
+    def __init__(self) -> None:
+        pass
+
+    async def restart(self, task_group: TaskGroup, action: Callable) -> None:
+        pass
+
+    async def stop(self) -> None:
         pass

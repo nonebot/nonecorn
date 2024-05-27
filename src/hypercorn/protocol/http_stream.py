@@ -15,7 +15,7 @@ from .events import (
     Request,
     Response,
     StreamClosed,
-    TrailerHeadersSend,
+    Trailers,
     ZeroCopySend,
 )
 from ..config import Config
@@ -35,6 +35,7 @@ from ..utils import (
     valid_server_name,
 )
 
+TRAILERS_VERSIONS = {"2", "3"}
 PUSH_VERSIONS = {"2", "3"}
 EARLY_HINTS_VERSIONS = {"2", "3"}
 
@@ -45,6 +46,7 @@ class ASGIHTTPState(Enum):
     # state tracking is required.
     REQUEST = auto()
     RESPONSE = auto()
+    TRAILERS = auto()
     CLOSED = auto()
 
 
@@ -107,8 +109,10 @@ class HTTPStream:
                 "extensions": {},
                 "state": self.app_state,
             }
-            self.scope["extensions"]["http.response.trailers"] = {}
             self.scope["extensions"]["http.response.pathsend"] = {}
+            if event.http_version in TRAILERS_VERSIONS:  # fixme http1.1 is also okey to send trailers
+                self.scope["extensions"]["http.response.trailers"] = {}
+
             if event.http_version in PUSH_VERSIONS:
                 self.scope["extensions"]["http.response.push"] = {}
             if (
@@ -153,7 +157,7 @@ class HTTPStream:
         else:
             if message["type"] == "http.response.start" and self.state == ASGIHTTPState.REQUEST:
                 self.response = message
-                self.trailers_expected = message.get("trailers", False)
+                self.trailers_expected = message.get("trailers", False) # fixme delete
             elif (
                 message["type"] == "http.response.push"
                 and self.scope["http_version"] in PUSH_VERSIONS
@@ -216,15 +220,17 @@ class HTTPStream:
                         )
                     )
 
-                if not message.get("more_body", False) and not self.trailers_expected:
-                    if self.state != ASGIHTTPState.CLOSED:
+                if not message.get("more_body", False):
+                    await self.send(EndBody(stream_id=self.stream_id))
+
+                    if self.response.get("trailers", False):
+                        self.state = ASGIHTTPState.TRAILERS
+                    else:
                         self.state = ASGIHTTPState.CLOSED
                         await self.config.log.access(
                             self.scope, self.response, time() - self.start_time
                         )
-                        await self.send(
-                            EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
-                        )
+# <<<<<<< HEAD
                         await self.send(StreamClosed(stream_id=self.stream_id))
             elif message["type"] == "http.response.zerocopysend" and self.state in {
                 ASGIHTTPState.REQUEST,
@@ -255,17 +261,27 @@ class HTTPStream:
                             count=message.get("count"),
                         )
                     )
+                if not message.get("more_body", False):
+                    await self.send(EndBody(stream_id=self.stream_id))
 
-                if not message.get("more_body", False) and not self.trailers_expected:
-                    if self.state != ASGIHTTPState.CLOSED:
+                    if self.response.get("trailers", False):
+                        self.state = ASGIHTTPState.TRAILERS
+                    else:
                         self.state = ASGIHTTPState.CLOSED
                         await self.config.log.access(
                             self.scope, self.response, time() - self.start_time
                         )
-                        await self.send(
-                            EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
-                        )
                         await self.send(StreamClosed(stream_id=self.stream_id))
+                # if not message.get("more_body", False) and not self.trailers_expected:
+                #     if self.state != ASGIHTTPState.CLOSED:
+                #         self.state = ASGIHTTPState.CLOSED
+                #         await self.config.log.access(
+                #             self.scope, self.response, time() - self.start_time
+                #         )
+                #         await self.send(
+                #             EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
+                #         )
+                #         await self.send(StreamClosed(stream_id=self.stream_id))
             elif message["type"] == "http.response.pathsend" and self.state in {
                 ASGIHTTPState.REQUEST,
                 ASGIHTTPState.RESPONSE,
@@ -303,37 +319,62 @@ class HTTPStream:
                         with open(message["path"], "rb") as f:
                             while chunk := f.read(65536):
                                 await self.send(Body(stream_id=self.stream_id, data=chunk))
+                if not message.get("more_body", False):
+                    await self.send(EndBody(stream_id=self.stream_id))
 
-                if self.state != ASGIHTTPState.CLOSED:
+                    if self.response.get("trailers", False):
+                        self.state = ASGIHTTPState.TRAILERS
+                    else:
+                        self.state = ASGIHTTPState.CLOSED
+                        await self.config.log.access(
+                            self.scope, self.response, time() - self.start_time
+                        )
+                        await self.send(StreamClosed(stream_id=self.stream_id))
+                # if self.state != ASGIHTTPState.CLOSED:
+# =======
+                        # await self.send(StreamClosed(stream_id=self.stream_id))
+            elif (
+                    message["type"] == "http.response.trailers"
+                    and self.scope["http_version"] in TRAILERS_VERSIONS
+                    and self.state == ASGIHTTPState.TRAILERS
+            ):
+                for name, value in self.scope["headers"]:
+                    if name == b"te" and value == b"trailers":
+                        headers = build_and_validate_headers(message["headers"])
+                        await self.send(Trailers(stream_id=self.stream_id, headers=headers))
+                        break
+
+                if not message.get("more_trailers", False):
                     self.state = ASGIHTTPState.CLOSED
                     await self.config.log.access(
                         self.scope, self.response, time() - self.start_time
                     )
-                    await self.send(EndBody(stream_id=self.stream_id))
                     await self.send(StreamClosed(stream_id=self.stream_id))
-            elif message["type"] == "http.response.trailers" and self.state in {
-                ASGIHTTPState.REQUEST,
-                ASGIHTTPState.RESPONSE,
-            }:
-                headers = message.get("headers", [])
-                more_trailers = message.get("more_trailers", False)
-                await self.send(
-                    TrailerHeadersSend(
-                        stream_id=self.stream_id, headers=headers, end_stream=not more_trailers
-                    )
-                )
-                if not more_trailers:
-                    await self.config.log.access(
-                        self.scope, self.response, time() - self.start_time
-                    )
-                    if self.scope["http_version"] == "2":
-                        await self.send(
-                            EndBody(
-                                stream_id=self.stream_id,
-                                headers=[],
-                            )
-                        )
-                    await self.send(StreamClosed(stream_id=self.stream_id))
+#             elif message["type"] == "http.response.trailers" and self.state in {
+#                 ASGIHTTPState.REQUEST,
+#                 ASGIHTTPState.RESPONSE,
+#             }:
+#                 headers = message.get("headers", [])
+#                 more_trailers = message.get("more_trailers", False)
+#                 await self.send(
+#                     TrailerHeadersSend(
+#                         stream_id=self.stream_id, headers=headers, end_stream=not more_trailers
+#                     )
+#                 )
+#                 if not more_trailers:
+#                     await self.config.log.access(
+#                         self.scope, self.response, time() - self.start_time
+#                     )
+#                     if self.scope["http_version"] == "2":
+#                         await self.send(
+#                             EndBody(
+#                                 stream_id=self.stream_id,
+#                                 headers=[],
+#                             )
+#                         )
+# =======
+# >>>>>>> temp
+#                     await self.send(StreamClosed(stream_id=self.stream_id))
             else:
                 raise UnexpectedMessageError(self.state, message["type"])
 

@@ -30,15 +30,20 @@ class ZeroCopySend(Event):
     count: Optional[int] = None
 
 
-@dataclass(frozen=True)
-class TrailerHeadersSend(Event):
-    headers: Iterable[Tuple[bytes, bytes]] = field(default_factory=list)
-    end_stream: bool = True
+# @dataclass(frozen=True) fixme delete this
+# class TrailerHeadersSend(Event):
+#     headers: Iterable[Tuple[bytes, bytes]] = field(default_factory=list)
+#     end_stream: bool = True
 
 
 @dataclass(frozen=True)
 class EndBody(Event):
     headers: Iterable[Tuple[bytes, bytes]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Trailers(Event):
+    headers: List[Tuple[bytes, bytes]]
 
 
 @dataclass(frozen=True)

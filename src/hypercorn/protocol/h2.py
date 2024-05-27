@@ -18,7 +18,7 @@ from .events import (
     Request,
     Response,
     StreamClosed,
-    TrailerHeadersSend,
+    Trailers,
     ZeroCopySend as StreamZeroCopySend,
 )
 from .http_stream import HTTPStream
@@ -235,18 +235,9 @@ class H2Protocol:
                 self.priority.unblock(event.stream_id)
                 await self.has_data.set()
                 await self.stream_buffers[event.stream_id].drain()
-            elif isinstance(event, TrailerHeadersSend):
-                self.connection.send_headers(
-                    event.stream_id, event.headers, event.end_stream  # fixme: do not close here
-                )
-                if event.end_stream:
-                    await self._flush()  # the stream is gona close, no time to wait for priority
-                else:
-                    data = self.connection.data_to_send()
-                    if data:
-                        self.priority.unblock(event.stream_id)
-                        await self.has_data.set()
-                        await self.stream_buffers[event.stream_id].push(data)
+            elif isinstance(event, Trailers):
+                self.connection.send_headers(event.stream_id, event.headers)
+                await self._flush()
             elif isinstance(event, StreamClosed):
                 await self._close_stream(event.stream_id)
                 idle = len(self.streams) == 0 or all(

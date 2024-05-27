@@ -18,7 +18,7 @@ from .events import (
     Request,
     Response,
     StreamClosed,
-    TrailerHeadersSend,
+    Trailers,
     ZeroCopySend as StreamZeroCopySend,
 )
 from .http_stream import HTTPStream
@@ -87,8 +87,8 @@ class H3Protocol:
                 self.connection.send_headers(event.stream_id, event.headers)
             self.connection.send_data(event.stream_id, b"", True)
             await self.send()
-        elif isinstance(event, TrailerHeadersSend):
-            self.connection.send_headers(event.stream_id, event.headers, event.end_stream)
+        elif isinstance(event, Trailers):
+            self.connection.send_headers(event.stream_id, event.headers)
             await self.send()
         elif isinstance(event, StreamClosed):
             pass  # ??
