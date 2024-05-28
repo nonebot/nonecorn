@@ -323,9 +323,6 @@ class HTTPStream:
                     )
                 )
                 if not more_trailers:
-                    await self.config.log.access(
-                        self.scope, self.response, time() - self.start_time
-                    )
                     if self.scope["http_version"] == "2":
                         await self.send(
                             EndBody(
