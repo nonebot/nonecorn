@@ -276,13 +276,25 @@ class HTTPStream:
             elif message["type"] == "http.response.trailers" and self.state == ASGIHTTPState.RESPONSE:
                 headers = message.get("headers", [])
                 more_trailers = message.get("more_trailers", False)
-                await self.send(
-                    TrailerHeadersSend(
-                        stream_id=self.stream_id, headers=headers, end_stream=not more_trailers
-                    )
-                )
+                for name, value in self.scope["headers"]:
+                    if name == b"te" and value == b"trailers":
+                        headers = build_and_validate_headers(headers)
+                        await self.send(
+                            TrailerHeadersSend(
+                                stream_id=self.stream_id, headers=headers, end_stream=not more_trailers
+                            )
+                        )
+                        break
+                else:
+                    if self.scope["http_version"] == "1.1":
+                        await self.send(
+                            EndBody(
+                                stream_id=self.stream_id,
+                                headers=[],
+                            )
+                        )
                 if not more_trailers:
-                    if self.scope["http_version"] == "2":
+                    if self.scope["http_version"] in ("2", "3"):
                         await self.send(
                             EndBody(
                                 stream_id=self.stream_id,
