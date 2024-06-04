@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+import socket
 
 import trio
 
@@ -21,7 +21,7 @@ class UDPServer:
         config: Config,
         context: WorkerContext,
         state: LifespanState,
-        socket: trio.socket.socket,
+        socket: socket.socket,
     ) -> None:
         self.app = app
         self.config = config
@@ -29,9 +29,7 @@ class UDPServer:
         self.socket = trio.socket.from_stdlib_socket(socket)
         self.state = state
 
-    async def run(
-        self, task_status: trio._core._run._TaskStatus = trio.TASK_STATUS_IGNORED
-    ) -> None:
+    async def run(self, task_status: trio.TaskStatus = trio.TASK_STATUS_IGNORED) -> None:
         from ..protocol.quic import QuicProtocol  # h3/Quic is an optional part of Hypercorn
 
         task_status.started()
