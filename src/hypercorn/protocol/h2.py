@@ -238,7 +238,7 @@ class H2Protocol:
                 await self.has_data.set()
                 await self.stream_buffers[event.stream_id].drain()
                 self.connection.send_headers(
-                    event.stream_id, event.headers, event.end_stream  # fixme: do not close here
+                    event.stream_id, event.headers, event.end_stream
                 )
                 if event.end_stream:
                     await self._flush()  # the stream is gona close, no time to wait for priority
