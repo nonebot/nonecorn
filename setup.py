@@ -13,7 +13,7 @@ with open(os.path.join(PROJECT_ROOT, "README.rst")) as file_:
 
 INSTALL_REQUIRES = [
     "h11",
-    "h2 >= 3.1.0",
+    "h2 >= 4.3.0",
     "priority",
     "tomli; python_version < '3.11'",
     "exceptiongroup >= 1.1.0",
@@ -34,7 +34,7 @@ TESTS_REQUIRE = [
 
 setup(
     name="nonecorn",
-    version="0.17.2dev1",
+    version="0.17.3",
     python_requires=">=3.7",
     description="A ASGI Server forked from hypercorn with more extra feature beyond ASGI",
     long_description=long_description,

@@ -138,8 +138,7 @@ class H2Protocol:
             self.connection.initiate_connection()
         await self._flush()
         if headers is not None:
-            event = h2.events.RequestReceived()
-            event.stream_id = 1
+            event = h2.events.RequestReceived(stream_id=1)
             event.headers = headers
             await self._create_stream(event)
             await self.streams[event.stream_id].handle(EndBody(stream_id=event.stream_id))
