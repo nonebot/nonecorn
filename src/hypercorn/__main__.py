@@ -28,6 +28,11 @@ def main(sys_args: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "application", help="The application to dispatch to as path.to.module:instance.path"
     )
+    parser.add_argument(
+        "--worker-type",
+        help="The worker type to use, process or thread, useful for free-threading python build",
+        default=sentinel,
+    )
     parser.add_argument("--access-log", help="Deprecated, see access-logfile", default=sentinel)
     parser.add_argument(
         "--access-logfile",
@@ -218,7 +223,9 @@ def main(sys_args: Optional[List[str]] = None) -> int:
     args = parser.parse_args(sys_args or sys.argv[1:])
     config = _load_config(args.config)
     config.application_path = args.application
-
+    
+    if args.worker_type is not sentinel:
+        config.worker_type = args.worker_type
     if args.log_level is not sentinel:
         config.loglevel = args.log_level
     if args.access_logformat is not sentinel:

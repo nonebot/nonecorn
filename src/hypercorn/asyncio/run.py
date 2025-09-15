@@ -111,7 +111,7 @@ async def worker_serve(
 
     servers = []
     for sock in sockets.secure_sockets:
-        if config.workers > 1 and platform.system() == "Windows":
+        if config.workers > 1 and platform.system() == "Windows" and config.worker_class == "process":
             sock = _share_socket(sock)
 
         servers.append(
@@ -127,7 +127,7 @@ async def worker_serve(
         await config.log.info(f"Running on https://{bind} (CTRL + C to quit)")
 
     for sock in sockets.insecure_sockets:
-        if config.workers > 1 and platform.system() == "Windows":
+        if config.workers > 1 and platform.system() == "Windows" and config.worker_class == "process":
             sock = _share_socket(sock)
 
         servers.append(
@@ -137,7 +137,7 @@ async def worker_serve(
         await config.log.info(f"Running on http://{bind} (CTRL + C to quit)")
 
     for sock in sockets.quic_sockets:
-        if config.workers > 1 and platform.system() == "Windows":
+        if config.workers > 1 and platform.system() == "Windows" and config.worker_class == "process":
             sock = _share_socket(sock)
 
         _, protocol = await loop.create_datagram_endpoint(

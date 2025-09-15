@@ -20,7 +20,7 @@ from ssl import (
     VerifyMode,
 )
 from time import time
-from typing import Any, AnyStr, Dict, List, Mapping, Optional, Tuple, Type, Union
+from typing import Any, AnyStr, Dict, List, Mapping, Optional, Tuple, Type, Union, Literal
 from wsgiref.handlers import format_date_time
 
 if sys.version_info >= (3, 11):
@@ -60,7 +60,8 @@ class Config:
     _quic_addresses: List[Tuple] = []
     _log: Optional[Logger] = None
     _root_path: str = ""
-
+    
+    worker_type: Literal["thread", "process"] = "process"
     access_log_format = '%(h)s %(l)s %(l)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
     accesslog: Union[logging.Logger, str, None] = None
     alpn_protocols = ["h2", "http/1.1"]
