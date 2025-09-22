@@ -17,6 +17,7 @@ from typing import (
     Callable,
     cast,
     Dict,
+    Final,
     Iterable,
     List,
     Literal,
@@ -219,15 +220,15 @@ def valid_server_name(config: Config, request: "Request") -> bool:
     return host in config.server_names
 
 
-RDNS_MAPPING: Dict[str, str] = {
+RDNS_MAPPING: dict[str, str] = {
+    "domainComponent": "DC",
     "commonName": "CN",
+    "organizationalUnitName": "OU",
+    "organizationName": "O",
+    "streetAddress": "STREET",
     "localityName": "L",
     "stateOrProvinceName": "ST",
-    "organizationName": "O",
-    "organizationalUnitName": "OU",
     "countryName": "C",
-    "streetAddress": "STREET",
-    "domainComponent": "DC",
     "userId": "UID",
 }
 
@@ -593,6 +594,7 @@ TLS_CIPHER_SUITES: Final[dict[str, int]] = {
     "TLS_SRP_SHA_WITH_AES_256_CBC_SHA": 49184,
 }
 
+
 def escape_dn_chars(s: str) -> str:
     """
     Escape all DN special characters found in s
@@ -616,6 +618,7 @@ def escape_dn_chars(s: str) -> str:
         if s[0] == "#" or s[0] == " ":
             s = "".join(("\\", s))
     return s
+
 
 def get_tls_info(ssl_object: ssl.SSLObject) -> Optional[Dict]:
     """
