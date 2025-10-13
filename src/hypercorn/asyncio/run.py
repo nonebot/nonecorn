@@ -4,12 +4,13 @@ import asyncio
 import platform
 import signal
 import ssl
+import sys
 from functools import partial
 from multiprocessing.synchronize import Event as EventType
 from os import getpid
+from random import randint
 from socket import socket
-from typing import Any, Awaitable, Callable, Optional
-from weakref import WeakSet
+from typing import Any, Awaitable, Callable, Optional, Set
 
 from .lifespan import Lifespan
 from .statsd import StatsdLogger
@@ -17,25 +18,27 @@ from .tcp_server import TCPServer
 from .udp_server import UDPServer
 from .worker_context import WorkerContext
 from ..config import Config, Sockets
-from ..typing import ASGIFramework
+from ..typing import AppWrapper, LifespanState
 from ..utils import (
     check_multiprocess_shutdown_event,
     load_application,
-    MustReloadError,
-    observe_changes,
     raise_shutdown,
     repr_socket_addr,
-    restart,
     ShutdownError,
 )
 
+try:
+    from asyncio import Runner
+except ImportError:
+    from taskgroup import Runner  # type: ignore
 
-async def _windows_signal_support() -> None:
-    # See https://bugs.python.org/issue23057, to catch signals on
-    # Windows it is necessary for an IO event to happen periodically.
-    # Fixed by Python 3.8
-    while True:
-        await asyncio.sleep(1)
+try:
+    from asyncio import TaskGroup
+except ImportError:
+    from taskgroup import TaskGroup  # type: ignore
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import BaseExceptionGroup
 
 
 def _share_socket(sock: socket) -> socket:
@@ -48,11 +51,11 @@ def _share_socket(sock: socket) -> socket:
 
 
 async def worker_serve(
-    app: ASGIFramework,
+    app: AppWrapper,
     config: Config,
     *,
     sockets: Optional[Sockets] = None,
-    shutdown_trigger: Optional[Callable[..., Awaitable[None]]] = None,
+    shutdown_trigger: Optional[Callable[..., Awaitable]] = None,
 ) -> None:
     config.set_statsd_logger_class(StatsdLogger)
 
@@ -72,10 +75,10 @@ async def worker_serve(
                     # Add signal handler may not be implemented on Windows
                     signal.signal(getattr(signal, signal_name), _signal_handler)
 
-        shutdown_trigger = signal_event.wait  # type: ignore
+        shutdown_trigger = signal_event.wait
 
-    lifespan = Lifespan(app, config)
-    reload_ = False
+    lifespan_state: LifespanState = {}
+    lifespan = Lifespan(app, config, loop, lifespan_state)
 
     lifespan_task = loop.create_task(lifespan.handle_lifespan())
     await lifespan.wait_for_startup()
@@ -92,16 +95,23 @@ async def worker_serve(
         ssl_context = config.create_ssl_context()
         ssl_handshake_timeout = config.ssl_handshake_timeout
 
-    context = WorkerContext()
-    server_tasks: WeakSet = WeakSet()
+    max_requests = None
+    if config.max_requests is not None:
+        max_requests = config.max_requests + randint(0, config.max_requests_jitter)
+    context = WorkerContext(max_requests)
+    server_tasks: Set[asyncio.Task] = set()
 
     async def _server_callback(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        server_tasks.add(asyncio.current_task(loop))
-        await TCPServer(app, loop, config, context, reader, writer)
+        nonlocal server_tasks
+
+        task = asyncio.current_task(loop)
+        server_tasks.add(task)
+        task.add_done_callback(server_tasks.discard)
+        await TCPServer(app, loop, config, context, lifespan_state, reader, writer)
 
     servers = []
     for sock in sockets.secure_sockets:
-        if config.workers > 1 and platform.system() == "Windows":
+        if config.workers > 1 and platform.system() == "Windows" and config.worker_class == "process":
             sock = _share_socket(sock)
 
         servers.append(
@@ -117,7 +127,7 @@ async def worker_serve(
         await config.log.info(f"Running on https://{bind} (CTRL + C to quit)")
 
     for sock in sockets.insecure_sockets:
-        if config.workers > 1 and platform.system() == "Windows":
+        if config.workers > 1 and platform.system() == "Windows" and config.worker_class == "process":
             sock = _share_socket(sock)
 
         servers.append(
@@ -127,68 +137,54 @@ async def worker_serve(
         await config.log.info(f"Running on http://{bind} (CTRL + C to quit)")
 
     for sock in sockets.quic_sockets:
-        if config.workers > 1 and platform.system() == "Windows":
+        if config.workers > 1 and platform.system() == "Windows" and config.worker_class == "process":
             sock = _share_socket(sock)
 
         _, protocol = await loop.create_datagram_endpoint(
-            lambda: UDPServer(app, loop, config, context), sock=sock
+            lambda: UDPServer(app, loop, config, context, lifespan_state), sock=sock
         )
-        server_tasks.add(loop.create_task(protocol.run()))  # type: ignore
+        task = loop.create_task(protocol.run())
+        server_tasks.add(task)
+        task.add_done_callback(server_tasks.discard)
         bind = repr_socket_addr(sock.family, sock.getsockname())
         await config.log.info(f"Running on https://{bind} (QUIC) (CTRL + C to quit)")
 
-    tasks = []
-    if platform.system() == "Windows":
-        tasks.append(loop.create_task(_windows_signal_support()))
-
-    tasks.append(loop.create_task(raise_shutdown(shutdown_trigger)))
-
-    if config.use_reloader:
-        tasks.append(loop.create_task(observe_changes(asyncio.sleep)))
-
     try:
-        if len(tasks):
-            gathered_tasks = asyncio.gather(*tasks)
-            await gathered_tasks
-        else:
-            loop.run_forever()
-    except MustReloadError:
-        reload_ = True
+        async with TaskGroup() as task_group:
+            task_group.create_task(raise_shutdown(shutdown_trigger))
+            task_group.create_task(raise_shutdown(context.terminate.wait))
+    except BaseExceptionGroup as error:
+        _, other_errors = error.split((ShutdownError, KeyboardInterrupt))
+        if other_errors is not None:
+            raise other_errors
     except (ShutdownError, KeyboardInterrupt):
         pass
     finally:
-        context.terminated = True
+        await context.terminated.set()
 
         for server in servers:
             server.close()
             await server.wait_closed()
-
-        # Retrieve the Gathered Tasks Cancelled Exception, to
-        # prevent a warning that this hasn't been done.
-        gathered_tasks.exception()
 
         try:
             gathered_server_tasks = asyncio.gather(*server_tasks)
             await asyncio.wait_for(gathered_server_tasks, config.graceful_timeout)
         except asyncio.TimeoutError:
             pass
+        finally:
+            # Retrieve the Gathered Tasks Cancelled Exception, to
+            # prevent a warning that this hasn't been done.
+            gathered_server_tasks.exception()
 
-        # Retrieve the Gathered Tasks Cancelled Exception, to
-        # prevent a warning that this hasn't been done.
-        gathered_server_tasks.exception()
-
-        await lifespan.wait_for_shutdown()
-        lifespan_task.cancel()
-        await lifespan_task
-
-    if reload_:
-        restart()
+            await lifespan.wait_for_shutdown()
+            lifespan_task.cancel()
+            await lifespan_task
 
 
 def asyncio_worker(
     config: Config, sockets: Optional[Sockets] = None, shutdown_event: Optional[EventType] = None
 ) -> None:
-    app = load_application(config.application_path)
+    app = load_application(config.application_path, config.wsgi_max_body_size)
 
     shutdown_trigger = None
     if shutdown_event is not None:
@@ -211,10 +207,8 @@ def uvloop_worker(
         import uvloop
     except ImportError as error:
         raise Exception("uvloop is not installed") from error
-    else:
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-    app = load_application(config.application_path)
+    app = load_application(config.application_path, config.wsgi_max_body_size)
 
     shutdown_trigger = None
     if shutdown_event is not None:
@@ -224,6 +218,7 @@ def uvloop_worker(
         partial(worker_serve, app, config, sockets=sockets),
         debug=config.debug,
         shutdown_trigger=shutdown_trigger,
+        loop_factory=uvloop.new_event_loop,
     )
 
 
@@ -232,49 +227,11 @@ def _run(
     *,
     debug: bool = False,
     shutdown_trigger: Optional[Callable[..., Awaitable[None]]] = None,
+    loop_factory: Callable[[], asyncio.AbstractEventLoop] | None = None,
 ) -> None:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.set_debug(debug)
-    loop.set_exception_handler(_exception_handler)
-
-    try:
-        loop.run_until_complete(main(shutdown_trigger=shutdown_trigger))
-    except KeyboardInterrupt:
-        pass
-    finally:
-        try:
-            _cancel_all_tasks(loop)
-            loop.run_until_complete(loop.shutdown_asyncgens())
-
-            try:
-                loop.run_until_complete(loop.shutdown_default_executor())
-            except AttributeError:
-                pass  # shutdown_default_executor is new to Python 3.9
-
-        finally:
-            asyncio.set_event_loop(None)
-            loop.close()
-
-
-def _cancel_all_tasks(loop: asyncio.AbstractEventLoop) -> None:
-    tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
-    if not tasks:
-        return
-
-    for task in tasks:
-        task.cancel()
-    loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
-
-    for task in tasks:
-        if not task.cancelled() and task.exception() is not None:
-            loop.call_exception_handler(
-                {
-                    "message": "unhandled exception during shutdown",
-                    "exception": task.exception(),
-                    "task": task,
-                }
-            )
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+        runner.get_loop().set_exception_handler(_exception_handler)
+        runner.run(main(shutdown_trigger=shutdown_trigger))
 
 
 def _exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:

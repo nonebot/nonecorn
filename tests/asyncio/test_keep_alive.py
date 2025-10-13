@@ -1,29 +1,34 @@
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncGenerator, Callable
+from typing import AsyncGenerator
 
 import h11
 import pytest
+import pytest_asyncio
 
+from hypercorn.app_wrappers import ASGIWrapper
 from hypercorn.asyncio.tcp_server import TCPServer
 from hypercorn.asyncio.worker_context import WorkerContext
 from hypercorn.config import Config
+from hypercorn.typing import ASGIReceiveCallable, ASGISendCallable, Scope
 from .helpers import MemoryReader, MemoryWriter
 
 KEEP_ALIVE_TIMEOUT = 0.01
 REQUEST = h11.Request(method="GET", target="/", headers=[(b"host", b"hypercorn")])
 
 
-async def slow_framework(scope: dict, receive: Callable, send: Callable) -> None:
+async def slow_framework(
+    scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
+) -> None:
     while True:
         event = await receive()
         if event["type"] == "http.disconnect":
             break
         elif event["type"] == "lifespan.startup":
-            await send({"type": "lifspan.startup.complete"})
+            await send({"type": "lifspan.startup.complete"})  # type: ignore
         elif event["type"] == "lifespan.shutdown":
-            await send({"type": "lifspan.shutdown.complete"})
+            await send({"type": "lifspan.shutdown.complete"})  # type: ignore
         elif event["type"] == "http.request" and not event.get("more_body", False):
             await asyncio.sleep(2 * KEEP_ALIVE_TIMEOUT)
             await send(
@@ -37,12 +42,20 @@ async def slow_framework(scope: dict, receive: Callable, send: Callable) -> None
             break
 
 
-@pytest.fixture(name="server", scope="function")
-async def _server(event_loop: asyncio.AbstractEventLoop) -> AsyncGenerator[TCPServer, None]:
+@pytest_asyncio.fixture(name="server", scope="function")  # type: ignore[misc]
+async def _server() -> AsyncGenerator[TCPServer, None]:
+    event_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+
     config = Config()
     config.keep_alive_timeout = KEEP_ALIVE_TIMEOUT
     server = TCPServer(
-        slow_framework, event_loop, config, WorkerContext(), MemoryReader(), MemoryWriter()  # type: ignore  # noqa: E501
+        ASGIWrapper(slow_framework),
+        event_loop,
+        config,
+        WorkerContext(None),
+        {},
+        MemoryReader(),  # type: ignore
+        MemoryWriter(),  # type: ignore
     )
     task = event_loop.create_task(server.run())
     yield server

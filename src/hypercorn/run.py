@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import platform
 import signal
+import threading
 import time
-from multiprocessing import Event, Process
-from typing import Any
+from multiprocessing import get_context
+from multiprocessing.connection import wait
+from multiprocessing.context import BaseContext
+from multiprocessing.process import BaseProcess
+from multiprocessing.synchronize import Event as EventType
+from pickle import PicklingError
+from typing import Any, List, Union
 
-from .config import Config
+from .config import Config, Sockets
 from .typing import WorkerFunc
-from .utils import write_pid_file
+from .utils import check_for_updates, files_to_watch, load_application, write_pid_file
 
 
-def run(config: Config) -> None:
+def run(config: Config) -> int:
     if config.pid_path is not None:
         write_pid_file(config.pid_path)
 
@@ -31,51 +37,142 @@ def run(config: Config) -> None:
     else:
         raise ValueError(f"No worker of class {config.worker_class} exists")
 
-    if config.workers == 1:
-        worker_func(config)
-    else:
-        run_multiple(config, worker_func)
-
-
-def run_multiple(config: Config, worker_func: WorkerFunc) -> None:
-    if config.use_reloader:
-        raise RuntimeError("Reloader can only be used with a single worker")
-
     sockets = config.create_sockets()
 
-    processes = []
+    if config.use_reloader and config.workers == 0:
+        raise RuntimeError("Cannot reload without workers")
 
-    # Ignore SIGINT before creating the processes, so that they
-    # inherit the signal handling. This means that the shutdown
-    # function controls the shutdown.
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    exitcode = 0
+    if config.workers == 0:
+        worker_func(config, sockets)
+    else:
+        if config.use_reloader:
+            # Load the application so that the correct paths are checked for
+            # changes, but only when the reloader is being used.
+            load_application(config.application_path, config.wsgi_max_body_size)
 
-    shutdown_event = Event()
+        active = True 
+        if config.worker_type == "process":
+            ctx = get_context("spawn")
+            shutdown_event = ctx.Event()
+            def shutdown(*args: Any) -> None:
+                nonlocal active, shutdown_event
+                shutdown_event.set()
+                active = False
+        else:
+            ctx = None # multithreading mode does not need a context
+            shutdown_event = threading.Event()
+            def shutdown(*args: Any) -> None:
+                nonlocal active, shutdown_event
+                shutdown_event.set()
+                active = False
 
-    for _ in range(config.workers):
-        process = Process(
-            target=worker_func,
-            kwargs={"config": config, "shutdown_event": shutdown_event, "sockets": sockets},
-        )
-        process.daemon = True
-        process.start()
-        processes.append(process)
-        if platform.system() == "Windows":
-            time.sleep(0.1)
+        processes: List[Union[BaseProcess, threading.Thread]] = []
+        while active:
+            # Ignore SIGINT before creating the processes, so that they
+            # inherit the signal handling. This means that the shutdown
+            # function controls the shutdown.
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    def shutdown(*args: Any) -> None:
-        shutdown_event.set()
+            _populate(processes, config, worker_func, sockets, shutdown_event, ctx)
 
-    for signal_name in {"SIGINT", "SIGTERM", "SIGBREAK"}:
-        if hasattr(signal, signal_name):
-            signal.signal(getattr(signal, signal_name), shutdown)
+            for signal_name in {"SIGINT", "SIGTERM", "SIGBREAK"}:
+                if hasattr(signal, signal_name):
+                    signal.signal(getattr(signal, signal_name), shutdown)
 
-    for process in processes:
-        process.join()
-    for process in processes:
-        process.terminate()
+            if config.use_reloader:
+                files = files_to_watch()
+                if config.worker_type == "process":
+                    while True:
+                        finished = wait((process.sentinel for process in processes), timeout=1)
+                        updated = check_for_updates(files)
+                        if updated:
+                            shutdown_event.set()
+                            for process in processes:
+                                process.join()
+                            shutdown_event.clear()
+                            break
+                        if len(finished) > 0:
+                            break
+                else:
+                    raise RuntimeError("Reloading not supported with threads")
+            else:
+                if config.worker_type == "process":
+                    wait(process.sentinel for process in processes)
+                else:
+                    while True:
+                        time.sleep(0.1)
+                        if any(not process.is_alive() for process in processes):
+                            break
 
-    for sock in sockets.secure_sockets:
-        sock.close()
-    for sock in sockets.insecure_sockets:
-        sock.close()
+            exitcode = _join_exited(processes)
+            if exitcode != 0:
+                shutdown_event.set()
+                active = False
+
+        for process in processes:
+            if isinstance(process, BaseProcess):
+                process.terminate()
+
+        exitcode = _join_exited(processes) if exitcode != 0 else exitcode
+
+        for sock in sockets.secure_sockets:
+            sock.close()
+
+        for sock in sockets.insecure_sockets:
+            sock.close()
+
+    return exitcode
+
+
+def _populate(
+    processes: List[Union[BaseProcess, threading.Thread]],
+    config: Config,
+    worker_func: WorkerFunc,
+    sockets: Sockets,
+    shutdown_event: EventType,
+    ctx: BaseContext,
+) -> None:
+    if config.worker_type == "process":
+        for _ in range(config.workers - len(processes)):
+            process = ctx.Process(  # type: ignore
+                target=worker_func,
+                kwargs={"config": config, "shutdown_event": shutdown_event, "sockets": sockets},
+            )
+            process.daemon = True
+            try:
+                process.start()
+            except PicklingError as error:
+                raise RuntimeError(
+                    "Cannot pickle the config, see https://docs.python.org/3/library/pickle.html#pickle-picklable"  # noqa: E501
+                ) from error
+            processes.append(process)
+            if platform.system() == "Windows":
+                time.sleep(0.1)
+    else:
+        for _ in range(config.workers - len(processes)):
+            thread = threading.Thread(
+                target=worker_func,
+                kwargs={"config": config, "shutdown_event": shutdown_event, "sockets": sockets},
+            )
+            thread.daemon = True
+            thread.start()
+            processes.append(thread)
+            if platform.system() == "Windows":
+                time.sleep(0.1)  # let's simulate the same behavior as processes, in case something wrong happens
+
+
+def _join_exited(processes: List[Union[BaseProcess, threading.Thread]]) -> int:
+    exitcode = 0
+    for index in reversed(range(len(processes))):
+        worker = processes[index]
+        if isinstance(worker, BaseProcess):
+            if worker.exitcode is not None:
+                worker.join()
+                exitcode = worker.exitcode if exitcode == 0 else exitcode
+                del processes[index]
+        else:
+            if worker.is_alive():
+                worker.join()
+            del processes[index]
+    return exitcode

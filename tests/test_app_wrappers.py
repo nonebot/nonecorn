@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Callable, List
+from functools import partial
+from typing import Any, Callable, List
 
 import pytest
 import trio
 
-from hypercorn.middleware import AsyncioWSGIMiddleware, TrioWSGIMiddleware
-from hypercorn.middleware.wsgi import _build_environ, InvalidPathError
-from hypercorn.typing import HTTPScope
+from hypercorn.app_wrappers import _build_environ, InvalidPathError, WSGIWrapper
+from hypercorn.typing import ASGIReceiveEvent, ASGISendEvent, ConnectionState, HTTPScope
 
 
 def echo_body(environ: dict, start_response: Callable) -> List[bytes]:
@@ -24,7 +24,7 @@ def echo_body(environ: dict, start_response: Callable) -> List[bytes]:
 
 @pytest.mark.trio
 async def test_wsgi_trio() -> None:
-    middleware = TrioWSGIMiddleware(echo_body)
+    app = WSGIWrapper(echo_body, 2**16)
     scope: HTTPScope = {
         "http_version": "1.1",
         "asgi": {},
@@ -39,30 +39,52 @@ async def test_wsgi_trio() -> None:
         "client": ("localhost", 80),
         "server": None,
         "extensions": {},
+        "state": ConnectionState({}),
     }
-    send_channel, receive_channel = trio.open_memory_channel(1)
-    await send_channel.send({"type": "http.request"})
+    send_channel, receive_channel = trio.open_memory_channel[ASGIReceiveEvent](1)
+    await send_channel.send({"type": "http.request"})  # type: ignore
 
     messages = []
 
-    async def _send(message: dict) -> None:
+    async def _send(message: ASGISendEvent) -> None:
         nonlocal messages
         messages.append(message)
 
-    await middleware(scope, receive_channel.receive, _send)
+    await app(scope, receive_channel.receive, _send, trio.to_thread.run_sync, trio.from_thread.run)
     assert messages == [
         {
             "headers": [(b"content-type", b"text/plain; charset=utf-8"), (b"content-length", b"0")],
             "status": 200,
             "type": "http.response.start",
         },
-        {"body": bytearray(b""), "type": "http.response.body"},
+        {"body": bytearray(b""), "type": "http.response.body", "more_body": True},
+        {"body": bytearray(b""), "type": "http.response.body", "more_body": False},
     ]
+
+
+async def _run_app(app: WSGIWrapper, scope: HTTPScope, body: bytes = b"") -> List[ASGISendEvent]:
+    queue: asyncio.Queue = asyncio.Queue()
+    await queue.put({"type": "http.request", "body": body})
+
+    messages = []
+
+    async def _send(message: ASGISendEvent) -> None:
+        nonlocal messages
+        messages.append(message)
+
+    event_loop = asyncio.get_running_loop()
+
+    def _call_soon(func: Callable, *args: Any) -> Any:
+        future = asyncio.run_coroutine_threadsafe(func(*args), event_loop)
+        return future.result()
+
+    await app(scope, queue.get, _send, partial(event_loop.run_in_executor, None), _call_soon)
+    return messages
 
 
 @pytest.mark.asyncio
 async def test_wsgi_asyncio() -> None:
-    middleware = AsyncioWSGIMiddleware(echo_body)
+    app = WSGIWrapper(echo_body, 2**16)
     scope: HTTPScope = {
         "http_version": "1.1",
         "asgi": {},
@@ -77,30 +99,23 @@ async def test_wsgi_asyncio() -> None:
         "client": ("localhost", 80),
         "server": None,
         "extensions": {},
+        "state": ConnectionState({}),
     }
-    queue: asyncio.Queue = asyncio.Queue()
-    await queue.put({"type": "http.request"})
-
-    messages = []
-
-    async def _send(message: dict) -> None:
-        nonlocal messages
-        messages.append(message)
-
-    await middleware(scope, queue.get, _send)
+    messages = await _run_app(app, scope)
     assert messages == [
         {
             "headers": [(b"content-type", b"text/plain; charset=utf-8"), (b"content-length", b"0")],
             "status": 200,
             "type": "http.response.start",
         },
-        {"body": bytearray(b""), "type": "http.response.body"},
+        {"body": bytearray(b""), "type": "http.response.body", "more_body": True},
+        {"body": bytearray(b""), "type": "http.response.body", "more_body": False},
     ]
 
 
 @pytest.mark.asyncio
 async def test_max_body_size() -> None:
-    middleware = AsyncioWSGIMiddleware(echo_body, max_body_size=4)
+    app = WSGIWrapper(echo_body, 4)
     scope: HTTPScope = {
         "http_version": "1.1",
         "asgi": {},
@@ -115,20 +130,40 @@ async def test_max_body_size() -> None:
         "client": ("localhost", 80),
         "server": None,
         "extensions": {},
+        "state": ConnectionState({}),
     }
-    queue: asyncio.Queue = asyncio.Queue()
-    await queue.put({"type": "http.request", "body": b"abcde"})
-    messages = []
-
-    async def _send(message: dict) -> None:
-        nonlocal messages
-        messages.append(message)
-
-    await middleware(scope, queue.get, _send)
+    messages = await _run_app(app, scope, b"abcde")
     assert messages == [
         {"headers": [], "status": 400, "type": "http.response.start"},
-        {"body": bytearray(b""), "type": "http.response.body"},
+        {"body": bytearray(b""), "type": "http.response.body", "more_body": False},
     ]
+
+
+def no_start_response(environ: dict, start_response: Callable) -> List[bytes]:
+    return [b"result"]
+
+
+@pytest.mark.asyncio
+async def test_no_start_response() -> None:
+    app = WSGIWrapper(no_start_response, 2**16)
+    scope: HTTPScope = {
+        "http_version": "1.1",
+        "asgi": {},
+        "method": "GET",
+        "headers": [],
+        "path": "/",
+        "root_path": "/",
+        "query_string": b"a=b",
+        "raw_path": b"/",
+        "scheme": "http",
+        "type": "http",
+        "client": ("localhost", 80),
+        "server": None,
+        "extensions": {},
+        "state": ConnectionState({}),
+    }
+    with pytest.raises(RuntimeError):
+        await _run_app(app, scope)
 
 
 def test_build_environ_encoding() -> None:
@@ -146,6 +181,7 @@ def test_build_environ_encoding() -> None:
         "client": ("localhost", 80),
         "server": None,
         "extensions": {},
+        "state": ConnectionState({}),
     }
     environ = _build_environ(scope, b"")
     assert environ["SCRIPT_NAME"] == "/中".encode("utf8").decode("latin-1")
@@ -167,6 +203,7 @@ def test_build_environ_root_path() -> None:
         "client": ("localhost", 80),
         "server": None,
         "extensions": {},
+        "state": ConnectionState({}),
     }
     with pytest.raises(InvalidPathError):
         _build_environ(scope, b"")

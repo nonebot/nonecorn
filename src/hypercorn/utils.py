@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import inspect
 import os
-import platform
 import socket
 import sys
-from dataclasses import dataclass
 from enum import Enum
 from importlib import import_module
 from multiprocessing.synchronize import Event as EventType
@@ -18,30 +16,21 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Literal,
     Optional,
     Tuple,
     TYPE_CHECKING,
 )
 
+from .app_wrappers import ASGIWrapper, WSGIWrapper
 from .config import Config
-from .typing import (
-    ASGI2Framework,
-    ASGI3Framework,
-    ASGIFramework,
-    ASGIReceiveCallable,
-    ASGISendCallable,
-    Scope,
-)
+from .typing import AppWrapper, ASGIFramework, Framework, WSGIFramework
 
 if TYPE_CHECKING:
     from .protocol.events import Request
 
 
 class ShutdownError(Exception):
-    pass
-
-
-class MustReloadError(Exception):
     pass
 
 
@@ -72,7 +61,7 @@ class FrameTooLargeError(Exception):
 
 
 def suppress_body(method: str, status_code: int) -> bool:
-    return method == "HEAD" or 100 <= status_code < 200 or status_code in {204, 304, 412}
+    return method == "HEAD" or 100 <= status_code < 200 or status_code in {204, 304}
 
 
 def build_and_validate_headers(headers: Iterable[Tuple[bytes, bytes]]) -> List[Tuple[bytes, bytes]]:
@@ -81,7 +70,7 @@ def build_and_validate_headers(headers: Iterable[Tuple[bytes, bytes]]) -> List[T
     for name, value in headers:
         if name[0] == b":"[0]:
             raise ValueError("Pseudo headers are not valid")
-        validated_headers.append((bytes(name).lower().strip(), bytes(value).strip()))
+        validated_headers.append((bytes(name).strip(), bytes(value).strip()))
     return validated_headers
 
 
@@ -100,13 +89,16 @@ def filter_pseudo_headers(headers: List[Tuple[bytes, bytes]]) -> List[Tuple[byte
     return filtered_headers
 
 
-def load_application(path: str) -> ASGIFramework:
-    try:
-        module_name, app_name = path.split(":", 1)
-    except ValueError:
+def load_application(path: str, wsgi_max_body_size: int) -> AppWrapper:
+    mode: Optional[Literal["asgi", "wsgi"]] = None
+    if ":" not in path:
         module_name, app_name = path, "app"
-    except AttributeError:
-        raise NoAppError()
+    elif path.count(":") == 2:
+        mode, module_name, app_name = path.split(":", 2)  # type: ignore
+        if mode not in {"asgi", "wsgi"}:
+            raise ValueError("Invalid mode, must be 'asgi', or 'wsgi'")
+    else:
+        module_name, app_name = path.split(":", 1)
 
     module_path = Path(module_name).resolve()
     sys.path.insert(0, str(module_path.parent))
@@ -118,17 +110,29 @@ def load_application(path: str) -> ASGIFramework:
         module = import_module(import_name)
     except ModuleNotFoundError as error:
         if error.name == import_name:
-            raise NoAppError()
+            raise NoAppError(f"Cannot load application from '{path}', module not found.")
         else:
             raise
-
     try:
-        return eval(app_name, vars(module))
+        app = eval(app_name, vars(module))
     except NameError:
-        raise NoAppError()
+        raise NoAppError(f"Cannot load application from '{path}', application not found.")
+    else:
+        return wrap_app(app, wsgi_max_body_size, mode)
 
 
-async def observe_changes(sleep: Callable[[float], Awaitable[Any]]) -> None:
+def wrap_app(
+    app: Framework, wsgi_max_body_size: int, mode: Optional[Literal["asgi", "wsgi"]]
+) -> AppWrapper:
+    if mode is None:
+        mode = "asgi" if is_asgi(app) else "wsgi"
+    if mode == "asgi":
+        return ASGIWrapper(cast(ASGIFramework, app))
+    else:
+        return WSGIWrapper(cast(WSGIFramework, app), wsgi_max_body_size)
+
+
+def files_to_watch() -> Dict[Path, float]:
     last_updates: Dict[Path, float] = {}
     for module in list(sys.modules.values()):
         filename = getattr(module, "__file__", None)
@@ -139,62 +143,24 @@ async def observe_changes(sleep: Callable[[float], Awaitable[Any]]) -> None:
             last_updates[Path(filename)] = path.stat().st_mtime
         except (FileNotFoundError, NotADirectoryError):
             pass
-
-    while True:
-        await sleep(1)
-
-        for index, (path, last_mtime) in enumerate(last_updates.items()):
-            if index % 10 == 0:
-                # Yield to the event loop
-                await sleep(0)
-
-            try:
-                mtime = path.stat().st_mtime
-            except FileNotFoundError:
-                # File deleted
-                raise MustReloadError()
-            else:
-                if mtime > last_mtime:
-                    raise MustReloadError()
-                else:
-                    last_updates[path] = mtime
+    return last_updates
 
 
-def restart() -> None:
-    # Restart  this process (only safe for dev/debug)
-    executable = sys.executable
-    script_path = Path(sys.argv[0]).resolve()
-    args = sys.argv[1:]
-    main_package = sys.modules["__main__"].__package__
-
-    if main_package is None:
-        # Executed by filename
-        if platform.system() == "Windows":
-            if not script_path.exists() and script_path.with_suffix(".exe").exists():
-                # quart run
-                executable = str(script_path.with_suffix(".exe"))
-            else:
-                # python run.py
-                args.append(str(script_path))
+def check_for_updates(files: Dict[Path, float]) -> bool:
+    for path, last_mtime in files.items():
+        try:
+            mtime = path.stat().st_mtime
+        except FileNotFoundError:
+            return True
         else:
-            if script_path.is_file() and os.access(script_path, os.X_OK):
-                # hypercorn run:app --reload
-                executable = str(script_path)
+            if mtime > last_mtime:
+                return True
             else:
-                # python run.py
-                args.append(str(script_path))
-    else:
-        # Executed as a module e.g. python -m run
-        module = script_path.stem
-        import_name = main_package
-        if module != "__main__":
-            import_name = f"{main_package}.{module}"
-        args[:0] = ["-m", import_name.lstrip(".")]
-
-    os.execv(executable, [executable] + args)
+                files[path] = mtime
+    return False
 
 
-async def raise_shutdown(shutdown_event: Callable[..., Awaitable[None]]) -> None:
+async def raise_shutdown(shutdown_event: Callable[..., Awaitable]) -> None:
     await shutdown_event()
     raise ShutdownError()
 
@@ -215,7 +181,7 @@ def write_pid_file(pid_path: str) -> None:
 
 def parse_socket_addr(family: int, address: tuple) -> Optional[Tuple[str, int]]:
     if family == socket.AF_INET:
-        return address  # type: ignore
+        return address
     elif family == socket.AF_INET6:
         return (address[0], address[1])
     else:
@@ -233,30 +199,6 @@ def repr_socket_addr(family: int, address: tuple) -> str:
         return f"{address}"
 
 
-async def invoke_asgi(
-    app: ASGIFramework, scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
-) -> None:
-    if _is_asgi_2(app):
-        scope["asgi"]["version"] = "2.0"
-        app = cast(ASGI2Framework, app)
-        asgi_instance = app(scope)
-        await asgi_instance(receive, send)
-    else:
-        scope["asgi"]["version"] = "3.0"
-        app = cast(ASGI3Framework, app)
-        await app(scope, receive, send)
-
-
-def _is_asgi_2(app: ASGIFramework) -> bool:
-    if inspect.isclass(app):
-        return True
-
-    if hasattr(app, "__call__") and inspect.iscoroutinefunction(app.__call__):  # type: ignore
-        return False
-
-    return not inspect.iscoroutinefunction(app)
-
-
 def valid_server_name(config: Config, request: "Request") -> bool:
     if len(config.server_names) == 0:
         return True
@@ -269,6 +211,9 @@ def valid_server_name(config: Config, request: "Request") -> bool:
     return host in config.server_names
 
 
-@dataclass
-class WorkerState:
-    terminated: bool = False
+def is_asgi(app: Any) -> bool:
+    if inspect.iscoroutinefunction(app):
+        return True
+    elif hasattr(app, "__call__"):
+        return inspect.iscoroutinefunction(app.__call__)
+    return False

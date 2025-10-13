@@ -23,10 +23,15 @@ def _load_config(config_path: Optional[str]) -> Config:
         return Config.from_toml(config_path)
 
 
-def main(sys_args: Optional[List[str]] = None) -> None:
+def main(sys_args: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "application", help="The application to dispatch to as path.to.module:instance.path"
+    )
+    parser.add_argument(
+        "--worker-type",
+        help="The worker type to use, process or thread, useful for free-threading python build",
+        default=sentinel,
     )
     parser.add_argument("--access-log", help="Deprecated, see access-logfile", default=sentinel)
     parser.add_argument(
@@ -90,6 +95,19 @@ def main(sys_args: Optional[List[str]] = None) -> None:
         type=int,
     )
     parser.add_argument(
+        "--max-requests",
+        help="""Maximum number of requests a worker will process before restarting""",
+        default=sentinel,
+        type=int,
+    )
+    parser.add_argument(
+        "--max-requests-jitter",
+        help="This jitter causes the max-requests per worker to be "
+        "randomized by randint(0, max_requests_jitter)",
+        default=sentinel,
+        type=int,
+    )
+    parser.add_argument(
         "-g", "--group", help="Group to own any unix sockets.", default=sentinel, type=int
     )
     parser.add_argument(
@@ -121,10 +139,14 @@ def main(sys_args: Optional[List[str]] = None) -> None:
         action="append",
     )
     parser.add_argument(
-        "--log-config", help="A Python logging configuration file.", default=sentinel
+        "--log-config",
+        help=""""A Python logging configuration file. This can be prefixed with
+        'json:' or 'toml:' to load the configuration from a file in
+        that format. Default is the logging ini format.""",
+        default=sentinel,
     )
     parser.add_argument(
-        "--log-level", help="The (error) log level, defaults to info", default="INFO"
+        "--log-level", help="The (error) log level, defaults to info", default=sentinel
     )
     parser.add_argument(
         "-p", "--pid", help="Location to write the PID (Program ID) to.", default=sentinel
@@ -201,8 +223,11 @@ def main(sys_args: Optional[List[str]] = None) -> None:
     args = parser.parse_args(sys_args or sys.argv[1:])
     config = _load_config(args.config)
     config.application_path = args.application
-    config.loglevel = args.log_level
-
+    
+    if args.worker_type is not sentinel:
+        config.worker_type = args.worker_type
+    if args.log_level is not sentinel:
+        config.loglevel = args.log_level
     if args.access_logformat is not sentinel:
         config.access_log_format = args.access_logformat
     if args.access_log is not sentinel:
@@ -247,6 +272,10 @@ def main(sys_args: Optional[List[str]] = None) -> None:
         config.keyfile_password = args.keyfile_password
     if args.log_config is not sentinel:
         config.logconfig = args.log_config
+    if args.max_requests is not sentinel:
+        config.max_requests = args.max_requests
+    if args.max_requests_jitter is not sentinel:
+        config.max_requests_jitter = args.max_requests
     if args.pid is not sentinel:
         config.pid_path = args.pid
     if args.root_path is not sentinel:
@@ -279,8 +308,8 @@ def main(sys_args: Optional[List[str]] = None) -> None:
     if len(args.server_names) > 0:
         config.server_names = args.server_names
 
-    run(config)
+    return run(config)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

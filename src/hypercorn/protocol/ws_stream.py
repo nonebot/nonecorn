@@ -18,12 +18,12 @@ from wsproto.events import (
 from wsproto.extensions import Extension, PerMessageDeflate
 from wsproto.frame_protocol import CloseReason
 from wsproto.handshake import server_extensions_handshake, WEBSOCKET_VERSION
-from wsproto.utilities import generate_accept_token, split_comma_header
+from wsproto.utilities import generate_accept_token, LocalProtocolError, split_comma_header
 
 from .events import Body, Data, EndBody, EndData, Event, Request, Response, StreamClosed
 from ..config import Config
 from ..typing import (
-    ASGIFramework,
+    AppWrapper,
     ASGISendEvent,
     TaskGroup,
     WebsocketAcceptEvent,
@@ -56,6 +56,7 @@ class FrameTooLargeError(Exception):
 
 class Handshake:
     def __init__(self, headers: List[Tuple[bytes, bytes]], http_version: str) -> None:
+        self.accepted = False
         self.http_version = http_version
         self.connection_tokens: Optional[List[str]] = None
         self.extensions: Optional[List[str]] = None
@@ -102,7 +103,7 @@ class Handshake:
     ) -> Tuple[int, List[Tuple[bytes, bytes]], Connection]:
         headers = []
         if subprotocol is not None:
-            if subprotocol not in self.subprotocols:
+            if self.subprotocols is None or subprotocol not in self.subprotocols:
                 raise Exception("Invalid Subprotocol")
             else:
                 headers.append((b"sec-websocket-protocol", subprotocol.encode()))
@@ -129,6 +130,7 @@ class Handshake:
 
             headers.append((name, value))
 
+        self.accepted = True
         return status_code, headers, Connection(ConnectionType.SERVER, extensions)
 
 
@@ -163,7 +165,7 @@ class WebsocketBuffer:
 class WSStream:
     def __init__(
         self,
-        app: ASGIFramework,
+        app: AppWrapper,
         config: Config,
         context: WorkerContext,
         task_group: TaskGroup,
@@ -207,7 +209,7 @@ class WSStream:
             path, _, query_string = event.raw_path.partition(b"?")
             self.scope = {
                 "type": "websocket",
-                "asgi": {"spec_version": "2.3"},
+                "asgi": {"spec_version": "2.3", "version": "3.0"},
                 "scheme": self.scheme,
                 "http_version": event.http_version,
                 "path": unquote(path.decode("ascii")),
@@ -217,6 +219,7 @@ class WSStream:
                 "headers": event.headers,
                 "client": self.client,
                 "server": self.server,
+                "state": event.state,
                 "subprotocols": self.handshake.subprotocols or [],
                 "extensions": {"websocket.http.response": {}},
             }
@@ -231,7 +234,10 @@ class WSStream:
                 self.app_put = await self.task_group.spawn_app(
                     self.app, self.config, self.scope, self.app_send
                 )
-                await self.app_put({"type": "websocket.connect"})  # type: ignore
+                await self.app_put({"type": "websocket.connect"})
+        elif isinstance(event, (Body, Data)) and not self.handshake.accepted:
+            await self._send_error_response(400)
+            self.closed = True
         elif isinstance(event, (Body, Data)):
             self.connection.receive_data(event.data)
             await self._handle_events()
@@ -257,7 +263,7 @@ class WSStream:
                     self.scope, {"status": 500, "headers": []}, time() - self.start_time
                 )
             elif self.state == ASGIWebsocketState.CONNECTED:
-                await self._send_wsproto_event(CloseConnection(code=CloseReason.ABNORMAL_CLOSURE))
+                await self._send_wsproto_event(CloseConnection(code=CloseReason.INTERNAL_ERROR))
             await self.send(StreamClosed(stream_id=self.stream_id))
         else:
             if message["type"] == "websocket.accept" and self.state == ASGIWebsocketState.HANDSHAKE:
@@ -333,8 +339,12 @@ class WSStream:
         )
 
     async def _send_wsproto_event(self, event: WSProtoEvent) -> None:
-        data = self.connection.send(event)
-        await self.send(Data(stream_id=self.stream_id, data=data))
+        try:
+            data = self.connection.send(event)
+        except LocalProtocolError:
+            pass
+        else:
+            await self.send(Data(stream_id=self.stream_id, data=data))
 
     async def _accept(self, message: WebsocketAcceptEvent) -> None:
         self.state = ASGIWebsocketState.CONNECTED

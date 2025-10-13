@@ -1,48 +1,38 @@
 from __future__ import annotations
 
 from math import inf
-from typing import Any, Callable, Generator, Optional
+from typing import Any, Generator
 
 import trio
 
 from .task_group import TaskGroup
-from .worker_context import WorkerContext
+from .worker_context import TrioSingleTask, WorkerContext
 from ..config import Config
 from ..events import Closed, Event, RawData, Updated
 from ..protocol import ProtocolWrapper
-from ..typing import ASGIFramework
+from ..typing import AppWrapper, ConnectionState, LifespanState
 from ..utils import parse_socket_addr
 
-MAX_RECV = 2 ** 16
-
-
-class EventWrapper:
-    def __init__(self) -> None:
-        self._event = trio.Event()
-
-    async def clear(self) -> None:
-        self._event = trio.Event()
-
-    async def wait(self) -> None:
-        await self._event.wait()
-
-    async def set(self) -> None:
-        self._event.set()
+MAX_RECV = 2**16
 
 
 class TCPServer:
     def __init__(
-        self, app: ASGIFramework, config: Config, context: WorkerContext, stream: trio.abc.Stream
+        self,
+        app: AppWrapper,
+        config: Config,
+        context: WorkerContext,
+        state: LifespanState,
+        stream: trio.SSLStream[trio.SocketStream],
     ) -> None:
         self.app = app
         self.config = config
         self.context = context
         self.protocol: ProtocolWrapper
         self.send_lock = trio.Lock()
-        self.timeout_lock = trio.Lock()
+        self.idle_task = TrioSingleTask()
         self.stream = stream
-
-        self._keep_alive_timeout_handle: Optional[trio.CancelScope] = None
+        self.state = state
 
     def __await__(self) -> Generator[Any, None, None]:
         return self.run().__await__()
@@ -73,6 +63,7 @@ class TCPServer:
                     self.config,
                     self.context,
                     task_group,
+                    ConnectionState(self.state.copy()),
                     ssl,
                     client,
                     server,
@@ -80,9 +71,9 @@ class TCPServer:
                     alpn_protocol,
                 )
                 await self.protocol.initiate()
-                await self._start_keep_alive_timeout()
+                await self.idle_task.restart(self._task_group, self._idle_timeout)
                 await self._read_data()
-        except (trio.MultiError, OSError):
+        except OSError:
             pass
         finally:
             await self._close()
@@ -101,22 +92,26 @@ class TCPServer:
             await self.protocol.handle(Closed())
         elif isinstance(event, Updated):
             if event.idle:
-                await self._start_keep_alive_timeout()
+                await self.idle_task.restart(self._task_group, self._idle_timeout)
             else:
-                await self._stop_keep_alive_timeout()
+                await self.idle_task.stop()
 
     async def _read_data(self) -> None:
         while True:
             try:
                 with trio.fail_after(self.config.read_timeout or inf):
                     data = await self.stream.receive_some(MAX_RECV)
-            except (trio.ClosedResourceError, trio.BrokenResourceError):
-                await self.protocol.handle(Closed())
+            except (
+                trio.ClosedResourceError,
+                trio.BrokenResourceError,
+                trio.TooSlowError,
+            ):
                 break
             else:
                 await self.protocol.handle(RawData(data))
                 if data == b"":
                     break
+        await self.protocol.handle(Closed())
 
     async def _close(self) -> None:
         try:
@@ -132,32 +127,13 @@ class TCPServer:
             pass
         await self.stream.aclose()
 
-    async def _start_keep_alive_timeout(self) -> None:
-        async with self.timeout_lock:
-            if self._keep_alive_timeout_handle is None:
-                self._keep_alive_timeout_handle = await self._task_group._nursery.start(
-                    _call_later, self.config.keep_alive_timeout, self._timeout
-                )
+    async def _idle_timeout(self) -> None:
+        with trio.move_on_after(self.config.keep_alive_timeout):
+            await self.context.terminated.wait()
 
-    async def _timeout(self) -> None:
+        with trio.CancelScope(shield=True):
+            await self._initiate_server_close()
+
+    async def _initiate_server_close(self) -> None:
         await self.protocol.handle(Closed())
         await self.stream.aclose()
-
-    async def _stop_keep_alive_timeout(self) -> None:
-        async with self.timeout_lock:
-            if self._keep_alive_timeout_handle is not None:
-                self._keep_alive_timeout_handle.cancel()
-            self._keep_alive_timeout_handle = None
-
-
-async def _call_later(
-    timeout: float,
-    callback: Callable,
-    task_status: trio._core._run._TaskStatus = trio.TASK_STATUS_IGNORED,
-) -> None:
-    cancel_scope = trio.CancelScope()
-    task_status.started(cancel_scope)
-    with cancel_scope:
-        await trio.sleep(timeout)
-        cancel_scope.shield = True
-        await callback()

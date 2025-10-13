@@ -32,7 +32,7 @@ from importlib.metadata import version as meta_version
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon']
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'sphinxcontrib.mermaid']
 
 # Add any paths that contain templates here, relative to this directory.
 # templates_path = ['_templates']
@@ -65,7 +65,7 @@ release = version
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = "en"
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -93,14 +93,14 @@ html_logo = "_static/logo_small.png"
 #
 html_theme_options = {
     "external_links": [
-        {"name": "Source code", "url": "https://gitlab.com/pgjones/hypercorn"},
-        {"name": "Issues", "url": "https://gitlab.com/pgjones/hypercorn/issues"},
+        {"name": "Source code", "url": "https://github.com/pgjones/hypercorn"},
+        {"name": "Issues", "url": "https://github.com/pgjones/hypercorn/issues"},
     ],
     "icon_links": [
         {
-            "name": "GitLab",
-            "url": "https://gitlab.com/pgjones/hypercorn",
-            "icon": "fab fa-gitlab",
+            "name": "Github",
+            "url": "https://github.com/pgjones/hypercorn",
+            "icon": "fab fa-github",
         },
     ],
 }

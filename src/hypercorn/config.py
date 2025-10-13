@@ -6,6 +6,7 @@ import logging
 import os
 import socket
 import stat
+import sys
 import types
 import warnings
 from dataclasses import dataclass
@@ -19,10 +20,13 @@ from ssl import (
     VerifyMode,
 )
 from time import time
-from typing import Any, AnyStr, Dict, List, Mapping, Optional, Tuple, Type, Union
+from typing import Any, AnyStr, Dict, List, Mapping, Optional, Tuple, Type, Union, Literal
 from wsgiref.handlers import format_date_time
 
-import toml
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 from .logging import Logger
 
@@ -56,7 +60,8 @@ class Config:
     _quic_addresses: List[Tuple] = []
     _log: Optional[Logger] = None
     _root_path: str = ""
-
+    
+    worker_type: Literal["thread", "process"] = "process"
     access_log_format = '%(h)s %(l)s %(l)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
     accesslog: Union[logging.Logger, str, None] = None
     alpn_protocols = ["h2", "http/1.1"]
@@ -73,11 +78,14 @@ class Config:
     read_timeout: Optional[int] = None
     group: Optional[int] = None
     h11_max_incomplete_size = 16 * 1024 * BYTES
+    h11_pass_raw_headers = False
     h2_max_concurrent_streams = 100
-    h2_max_header_list_size = 2 ** 16
-    h2_max_inbound_frame_size = 2 ** 14 * OCTETS
+    h2_max_header_list_size = 2**16
+    h2_max_inbound_frame_size = 2**14 * OCTETS
+    include_date_header = True
     include_server_header = True
     keep_alive_timeout = 5 * SECONDS
+    keep_alive_max_requests = 1000
     keyfile: Optional[str] = None
     keyfile_password: Optional[str] = None
     logconfig: Optional[str] = None
@@ -85,6 +93,8 @@ class Config:
     logger_class = Logger
     loglevel: str = "INFO"
     max_app_queue_size: int = 10
+    max_requests: Optional[int] = None
+    max_requests_jitter: int = 0
     pid_path: Optional[str] = None
     server_names: List[str] = []
     shutdown_timeout = 60 * SECONDS
@@ -101,6 +111,7 @@ class Config:
     websocket_ping_interval: Optional[float] = None
     worker_class = "asyncio"
     workers = 1
+    wsgi_max_body_size = 16 * 1024 * 1024 * BYTES
 
     def set_cert_reqs(self, value: int) -> None:
         warnings.warn("Please use verify_mode instead", Warning)
@@ -236,6 +247,10 @@ class Config:
                 except (ValueError, IndexError):
                     host, port = bind, 8000
                 sock = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, type_)
+
+                if type_ == socket.SOCK_STREAM:
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
                 if self.workers > 1:
                     try:
                         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
@@ -267,7 +282,9 @@ class Config:
         return sockets
 
     def response_headers(self, protocol: str) -> List[Tuple[bytes, bytes]]:
-        headers = [(b"date", format_date_time(time()).encode("ascii"))]
+        headers = []
+        if self.include_date_header:
+            headers.append((b"date", format_date_time(time()).encode("ascii")))
         if self.include_server_header:
             headers.append((b"server", f"hypercorn-{protocol}".encode("ascii")))
 
@@ -351,8 +368,8 @@ class Config:
             filename: The filename which gives the path to the file.
         """
         file_path = os.fspath(filename)
-        with open(file_path) as file_:
-            data = toml.load(file_)
+        with open(file_path, "rb") as file_:
+            data = tomllib.load(file_)
         return cls.from_mapping(data)
 
     @classmethod
@@ -387,6 +404,6 @@ class Config:
         mapping = {
             key: getattr(instance, key)
             for key in dir(instance)
-            if not isinstance(getattr(instance, key), types.ModuleType)
+            if not isinstance(getattr(instance, key), types.ModuleType) and not key.startswith("__")
         }
         return cls.from_mapping(mapping)

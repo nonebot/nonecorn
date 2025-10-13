@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import sys
+
 import trio
 
 from ..config import Config
-from ..typing import ASGIFramework, ASGIReceiveEvent, ASGISendEvent, LifespanScope
-from ..utils import invoke_asgi, LifespanFailureError, LifespanTimeoutError
+from ..typing import AppWrapper, ASGIReceiveEvent, ASGISendEvent, LifespanScope, LifespanState
+from ..utils import LifespanFailureError, LifespanTimeoutError
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import BaseExceptionGroup
 
 
 class UnexpectedMessageError(Exception):
@@ -12,27 +17,42 @@ class UnexpectedMessageError(Exception):
 
 
 class Lifespan:
-    def __init__(self, app: ASGIFramework, config: Config) -> None:
+    def __init__(self, app: AppWrapper, config: Config, state: LifespanState) -> None:
         self.app = app
         self.config = config
         self.startup = trio.Event()
         self.shutdown = trio.Event()
-        self.app_send_channel, self.app_receive_channel = trio.open_memory_channel(
-            config.max_app_queue_size
-        )
+        self.app_send_channel, self.app_receive_channel = trio.open_memory_channel[
+            ASGIReceiveEvent
+        ](config.max_app_queue_size)
+        self.state = state
         self.supported = True
 
     async def handle_lifespan(
-        self, *, task_status: trio._core._run._TaskStatus = trio.TASK_STATUS_IGNORED
+        self, *, task_status: trio.TaskStatus = trio.TASK_STATUS_IGNORED
     ) -> None:
         task_status.started()
-        scope: LifespanScope = {"type": "lifespan", "asgi": {"spec_version": "2.0"}}
+        scope: LifespanScope = {
+            "type": "lifespan",
+            "asgi": {"spec_version": "2.0", "version": "3.0"},
+            "state": self.state,
+        }
         try:
-            await invoke_asgi(self.app, scope, self.asgi_receive, self.asgi_send)
-        except LifespanFailureError:
-            # Lifespan failures should crash the server
+            await self.app(
+                scope,
+                self.asgi_receive,
+                self.asgi_send,
+                trio.to_thread.run_sync,
+                trio.from_thread.run,
+            )
+        except (LifespanFailureError, trio.Cancelled):
             raise
-        except Exception:
+        except (BaseExceptionGroup, Exception) as error:
+            if isinstance(error, BaseExceptionGroup):
+                reraise_error = error.subgroup((LifespanFailureError, trio.Cancelled))
+                if reraise_error is not None:
+                    raise reraise_error
+
             self.supported = False
             if not self.startup.is_set():
                 await self.config.log.warning(
@@ -81,8 +101,8 @@ class Lifespan:
         elif message["type"] == "lifespan.shutdown.complete":
             self.shutdown.set()
         elif message["type"] == "lifespan.startup.failed":
-            raise LifespanFailureError("startup", message["message"])
+            raise LifespanFailureError("startup", message.get("message", ""))
         elif message["type"] == "lifespan.shutdown.failed":
-            raise LifespanFailureError("shutdown", message["message"])
+            raise LifespanFailureError("shutdown", message.get("message", ""))
         else:
             raise UnexpectedMessageError(message["type"])

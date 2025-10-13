@@ -2,22 +2,39 @@ from __future__ import annotations
 
 from multiprocessing.synchronize import Event as EventType
 from types import TracebackType
-from typing import Any, Awaitable, Callable, Dict, Iterable, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Iterable,
+    Literal,
+    NewType,
+    Optional,
+    Protocol,
+    Tuple,
+    Type,
+    TypedDict,
+    Union,
+)
 
 import h2.events
 import h11
 
-# Till PEP 544 is accepted
-try:
-    from typing import Literal, Protocol, TypedDict
-except ImportError:
-    from typing_extensions import Literal, Protocol, TypedDict  # type: ignore
-
 from .config import Config, Sockets
+
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
 
 H11SendableEvent = Union[h11.Data, h11.EndOfMessage, h11.InformationalResponse, h11.Response]
 
 WorkerFunc = Callable[[Config, Optional[Sockets], Optional[EventType]], None]
+
+LifespanState = Dict[str, Any]
+
+ConnectionState = NewType("ConnectionState", Dict[str, Any])
 
 
 class ASGIVersions(TypedDict, total=False):
@@ -38,6 +55,7 @@ class HTTPScope(TypedDict):
     headers: Iterable[Tuple[bytes, bytes]]
     client: Optional[Tuple[str, int]]
     server: Optional[Tuple[str, Optional[int]]]
+    state: ConnectionState
     extensions: Dict[str, dict]
 
 
@@ -54,12 +72,14 @@ class WebsocketScope(TypedDict):
     client: Optional[Tuple[str, int]]
     server: Optional[Tuple[str, Optional[int]]]
     subprotocols: Iterable[str]
+    state: ConnectionState
     extensions: Dict[str, dict]
 
 
 class LifespanScope(TypedDict):
     type: Literal["lifespan"]
     asgi: ASGIVersions
+    state: LifespanState
 
 
 WWWScope = Union[HTTPScope, WebsocketScope]
@@ -76,6 +96,7 @@ class HTTPResponseStartEvent(TypedDict):
     type: Literal["http.response.start"]
     status: int
     headers: Iterable[Tuple[bytes, bytes]]
+    trailers: NotRequired[bool]
 
 
 class HTTPResponseBodyEvent(TypedDict):
@@ -84,10 +105,21 @@ class HTTPResponseBodyEvent(TypedDict):
     more_body: bool
 
 
+class HTTPResponseTrailersEvent(TypedDict):
+    type: Literal["http.response.trailers"]
+    headers: Iterable[Tuple[bytes, bytes]]
+    more_trailers: NotRequired[bool]
+
+
 class HTTPServerPushEvent(TypedDict):
     type: Literal["http.response.push"]
     path: str
     headers: Iterable[Tuple[bytes, bytes]]
+
+
+class HTTPEarlyHintEvent(TypedDict):
+    type: Literal["http.response.early_hint"]
+    links: Iterable[bytes]
 
 
 class HTTPDisconnectEvent(TypedDict):
@@ -179,7 +211,9 @@ ASGIReceiveEvent = Union[
 ASGISendEvent = Union[
     HTTPResponseStartEvent,
     HTTPResponseBodyEvent,
+    HTTPResponseTrailersEvent,
     HTTPServerPushEvent,
+    HTTPEarlyHintEvent,
     HTTPDisconnectEvent,
     WebsocketAcceptEvent,
     WebsocketSendEvent,
@@ -196,19 +230,7 @@ ASGISendEvent = Union[
 ASGIReceiveCallable = Callable[[], Awaitable[ASGIReceiveEvent]]
 ASGISendCallable = Callable[[ASGISendEvent], Awaitable[None]]
 
-
-class ASGI2Protocol(Protocol):
-    # Should replace with a Protocol when PEP 544 is accepted.
-
-    def __init__(self, scope: Scope) -> None:
-        ...
-
-    async def __call__(self, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
-        ...
-
-
-ASGI2Framework = Type[ASGI2Protocol]
-ASGI3Framework = Callable[
+ASGIFramework = Callable[
     [
         Scope,
         ASGIReceiveCallable,
@@ -216,23 +238,24 @@ ASGI3Framework = Callable[
     ],
     Awaitable[None],
 ]
-ASGIFramework = Union[ASGI2Framework, ASGI3Framework]
+WSGIFramework = Callable[[dict, Callable], Iterable[bytes]]
+Framework = Union[ASGIFramework, WSGIFramework]
 
 
 class H2SyncStream(Protocol):
     scope: dict
 
     def data_received(self, data: bytes) -> None:
-        ...
+        pass
 
     def ended(self) -> None:
-        ...
+        pass
 
     def reset(self) -> None:
-        ...
+        pass
 
     def close(self) -> None:
-        ...
+        pass
 
     async def handle_request(
         self,
@@ -241,23 +264,23 @@ class H2SyncStream(Protocol):
         client: Tuple[str, int],
         server: Tuple[str, int],
     ) -> None:
-        ...
+        pass
 
 
 class H2AsyncStream(Protocol):
     scope: dict
 
     async def data_received(self, data: bytes) -> None:
-        ...
+        pass
 
     async def ended(self) -> None:
-        ...
+        pass
 
     async def reset(self) -> None:
-        ...
+        pass
 
     async def close(self) -> None:
-        ...
+        pass
 
     async def handle_request(
         self,
@@ -266,56 +289,87 @@ class H2AsyncStream(Protocol):
         client: Tuple[str, int],
         server: Tuple[str, int],
     ) -> None:
-        ...
+        pass
 
 
 class Event(Protocol):
     def __init__(self) -> None:
-        ...
+        pass
 
     async def clear(self) -> None:
-        ...
+        pass
 
     async def set(self) -> None:
-        ...
+        pass
 
     async def wait(self) -> None:
-        ...
+        pass
+
+    def is_set(self) -> bool:
+        pass
 
 
 class WorkerContext(Protocol):
     event_class: Type[Event]
-    terminated: bool
+    single_task_class: Type[SingleTask]
+    terminate: Event
+    terminated: Event
+
+    async def mark_request(self) -> None:
+        pass
 
     @staticmethod
     async def sleep(wait: Union[float, int]) -> None:
-        ...
+        pass
 
     @staticmethod
     def time() -> float:
-        ...
+        pass
 
 
 class TaskGroup(Protocol):
     async def spawn_app(
         self,
-        app: ASGIFramework,
+        app: AppWrapper,
         config: Config,
         scope: Scope,
         send: Callable[[Optional[ASGISendEvent]], Awaitable[None]],
     ) -> Callable[[ASGIReceiveEvent], Awaitable[None]]:
-        ...
+        pass
 
     def spawn(self, func: Callable, *args: Any) -> None:
-        ...
+        pass
 
     async def __aenter__(self) -> TaskGroup:
-        ...
+        pass
 
     async def __aexit__(self, exc_type: type, exc_value: BaseException, tb: TracebackType) -> None:
-        ...
+        pass
 
 
 class ResponseSummary(TypedDict):
     status: int
     headers: Iterable[Tuple[bytes, bytes]]
+
+
+class AppWrapper(Protocol):
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: ASGIReceiveCallable,
+        send: ASGISendCallable,
+        sync_spawn: Callable,
+        call_soon: Callable,
+    ) -> None:
+        pass
+
+
+class SingleTask(Protocol):
+    def __init__(self) -> None:
+        pass
+
+    async def restart(self, task_group: TaskGroup, action: Callable) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass

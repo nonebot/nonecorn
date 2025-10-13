@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -7,6 +8,12 @@ import time
 from http import HTTPStatus
 from logging.config import dictConfig, fileConfig
 from typing import Any, IO, Mapping, Optional, TYPE_CHECKING, Union
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
 
 if TYPE_CHECKING:
     from .config import Config
@@ -58,11 +65,18 @@ class Logger:
         )
 
         if config.logconfig is not None:
-            log_config = {
-                "__file__": config.logconfig,
-                "here": os.path.dirname(config.logconfig),
-            }
-            fileConfig(config.logconfig, defaults=log_config, disable_existing_loggers=False)
+            if config.logconfig.startswith("json:"):
+                with open(config.logconfig[5:]) as file_:
+                    dictConfig(json.load(file_))
+            elif config.logconfig.startswith("toml:"):
+                with open(config.logconfig[5:], "rb") as file_:
+                    dictConfig(tomllib.load(file_))
+            else:
+                log_config = {
+                    "__file__": config.logconfig,
+                    "here": os.path.dirname(config.logconfig),
+                }
+                fileConfig(config.logconfig, defaults=log_config, disable_existing_loggers=False)
         else:
             if config.logconfig_dict is not None:
                 dictConfig(config.logconfig_dict)
@@ -104,7 +118,7 @@ class Logger:
             self.error_logger.log(level, message, *args, **kwargs)
 
     def atoms(
-        self, request: "WWWScope", response: "ResponseSummary", request_time: float
+        self, request: "WWWScope", response: Optional["ResponseSummary"], request_time: float
     ) -> Mapping[str, str]:
         """Create and return an access log atoms dictionary.
 
@@ -119,12 +133,10 @@ class Logger:
 
 class AccessLogAtoms(dict):
     def __init__(
-        self, request: "WWWScope", response: "ResponseSummary", request_time: float
+        self, request: "WWWScope", response: Optional["ResponseSummary"], request_time: float
     ) -> None:
         for name, value in request["headers"]:
             self[f"{{{name.decode('latin1').lower()}}}i"] = value.decode("latin1")
-        for name, value in response.get("headers", []):
-            self[f"{{{name.decode('latin1').lower()}}}o"] = value.decode("latin1")
         for name, value in os.environ.items():
             self[f"{{{name.lower()}}}e"] = value
         protocol = request.get("http_version", "ws")
@@ -143,11 +155,17 @@ class AccessLogAtoms(dict):
             method = "GET"
         query_string = request["query_string"].decode()
         path_with_qs = request["path"] + ("?" + query_string if query_string else "")
-        status_code = response["status"]
-        try:
-            status_phrase = HTTPStatus(status_code).phrase
-        except ValueError:
-            status_phrase = f"<???{status_code}???>"
+
+        status_code = "-"
+        status_phrase = "-"
+        if response is not None:
+            for name, value in response.get("headers", []):  # type: ignore
+                self[f"{{{name.decode('latin1').lower()}}}o"] = value.decode("latin1")  # type: ignore # noqa: E501
+            status_code = str(response["status"])
+            try:
+                status_phrase = HTTPStatus(response["status"]).phrase
+            except ValueError:
+                status_phrase = f"<???{status_code}???>"
         self.update(
             {
                 "h": remote_addr,
@@ -155,7 +173,7 @@ class AccessLogAtoms(dict):
                 "t": time.strftime("[%d/%b/%Y:%H:%M:%S %z]"),
                 "r": f"{method} {request['path']} {protocol}",
                 "R": f"{method} {path_with_qs} {protocol}",
-                "s": response["status"],
+                "s": status_code,
                 "st": status_phrase,
                 "S": request["scheme"],
                 "m": method,

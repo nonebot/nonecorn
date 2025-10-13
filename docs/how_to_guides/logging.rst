@@ -8,6 +8,19 @@ default neither will actively log. The special value of ``-`` can be
 used as the logging target in order to log to stdout and stderr
 respectively. Any other value is considered a filepath to target.
 
+Configuring the Python logger
+-----------------------------
+
+The Python logger can be configured using the ``logconfig`` or
+``logconfig_dict`` configuration attributes. The latter,
+``logconfig_dict`` will be passed to ``dictConfig`` after the loggers
+have been created.
+
+The ``logconfig`` variable should point at a file to be used by the
+``fileConfig`` function. Alternatively it can point to a JSON or TOML
+formatted file which will be loaded and passed to the ``dictConfig``
+function. To use a JSON formatted file prefix the filepath with
+``json:`` and for TOML use ``toml:``.
 
 Configuring access logs
 -----------------------
@@ -55,10 +68,10 @@ p            process ID
 {Variable}e  environment variable
 ===========  ===========
 
-Customising the access logger
------------------------------
+Customising the logger
+----------------------
 
-The acces logger class can be customised by changing the
-``access_logger_class`` attribute of the ``Config`` class. This is
-only possible when using the python based configuration file. The
-``hypercorn.logging.AccessLogger`` class is used by default.
+The logger class can be customised by changing the ``logger_class``
+attribute of the ``Config`` class. This is only possible when using
+the python based configuration file. The
+``hypercorn.logging.Logger`` class is used by default.

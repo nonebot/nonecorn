@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import chain
-from typing import Awaitable, Callable, Optional, Tuple, Union
+from typing import Awaitable, Callable, cast, Optional, Tuple, Type, Union
 
 import h11
 
@@ -11,6 +11,7 @@ from .events import (
     EndBody,
     EndData,
     Event as StreamEvent,
+    InformationalResponse,
     Request,
     Response,
     StreamClosed,
@@ -19,7 +20,7 @@ from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
 from ..events import Closed, Event, RawData, Updated
-from ..typing import ASGIFramework, H11SendableEvent, TaskGroup, WorkerContext
+from ..typing import AppWrapper, ConnectionState, H11SendableEvent, TaskGroup, WorkerContext
 
 STREAM_ID = 1
 
@@ -51,6 +52,8 @@ class H11WSConnection:
     # events (Response, Body, EndBody).
     our_state = None  # Prevents recycling the connection
     they_are_waiting_for_100_continue = False
+    their_state = None
+    trailing_data = (b"", False)
 
     def __init__(self, h11_connection: h11.Connection) -> None:
         self.buffer = bytearray(h11_connection.trailing_data[0])
@@ -59,7 +62,7 @@ class H11WSConnection:
     def receive_data(self, data: bytes) -> None:
         self.buffer.extend(data)
 
-    def next_event(self) -> Data:
+    def next_event(self) -> Union[Data, Type[h11.NEED_DATA]]:
         if self.buffer:
             event = Data(stream_id=STREAM_ID, data=bytes(self.buffer))
             self.buffer = bytearray()
@@ -70,14 +73,18 @@ class H11WSConnection:
     def send(self, event: H11SendableEvent) -> bytes:
         return self.h11_connection.send(event)
 
+    def start_next_cycle(self) -> None:
+        pass
+
 
 class H11Protocol:
     def __init__(
         self,
-        app: ASGIFramework,
+        app: AppWrapper,
         config: Config,
         context: WorkerContext,
         task_group: TaskGroup,
+        connection_state: ConnectionState,
         ssl: bool,
         client: Optional[Tuple[str, int]],
         server: Optional[Tuple[str, int]],
@@ -87,15 +94,17 @@ class H11Protocol:
         self.can_read = context.event_class()
         self.client = client
         self.config = config
-        self.connection = h11.Connection(
+        self.connection: Union[h11.Connection, H11WSConnection] = h11.Connection(
             h11.SERVER, max_incomplete_event_size=self.config.h11_max_incomplete_size
         )
         self.context = context
+        self.keep_alive_requests = 0
         self.send = send
         self.server = server
         self.ssl = ssl
         self.stream: Optional[Union[HTTPStream, WSStream]] = None
         self.task_group = task_group
+        self.connection_state = connection_state
 
     async def initiate(self) -> None:
         pass
@@ -111,19 +120,24 @@ class H11Protocol:
     async def stream_send(self, event: StreamEvent) -> None:
         if isinstance(event, Response):
             if event.status_code >= 200:
+                headers = list(chain(event.headers, self.config.response_headers("h11")))
+                if self.keep_alive_requests >= self.config.keep_alive_max_requests:
+                    headers.append((b"connection", b"close"))
                 await self._send_h11_event(
                     h11.Response(
-                        headers=chain(event.headers, self.config.response_headers("h11")),
+                        headers=headers,
                         status_code=event.status_code,
                     )
                 )
             else:
                 await self._send_h11_event(
                     h11.InformationalResponse(
-                        headers=chain(event.headers, self.config.response_headers("h11")),
+                        headers=list(chain(event.headers, self.config.response_headers("h11"))),
                         status_code=event.status_code,
                     )
                 )
+        elif isinstance(event, InformationalResponse):
+            pass  # Ignore for HTTP/1
         elif isinstance(event, Body):
             await self._send_h11_event(h11.Data(data=event.data))
         elif isinstance(event, EndBody):
@@ -146,16 +160,16 @@ class H11Protocol:
 
             try:
                 event = self.connection.next_event()
-            except h11.RemoteProtocolError:
+            except h11.RemoteProtocolError as error:
                 if self.connection.our_state in {h11.IDLE, h11.SEND_RESPONSE}:
-                    await self._send_error_response(400)
+                    await self._send_error_response(error.error_status_hint)
                 await self.send(Closed())
                 break
             else:
                 if isinstance(event, h11.Request):
+                    await self.send(Updated(idle=False))
                     await self._check_protocol(event)
                     await self._create_stream(event)
-                    await self.send(Updated(idle=False))
                 elif event is h11.PAUSED:
                     await self.can_read.clear()
                     await self.can_read.wait()
@@ -198,7 +212,7 @@ class H11Protocol:
                 self.stream_send,
                 STREAM_ID,
             )
-            self.connection = H11WSConnection(self.connection)
+            self.connection = H11WSConnection(cast(h11.Connection, self.connection))
         else:
             self.stream = HTTPStream(
                 self.app,
@@ -211,15 +225,24 @@ class H11Protocol:
                 self.stream_send,
                 STREAM_ID,
             )
+
+        if self.config.h11_pass_raw_headers:
+            headers = request.headers.raw_items()
+        else:
+            headers = list(request.headers)
+
         await self.stream.handle(
             Request(
                 stream_id=STREAM_ID,
-                headers=request.headers,
+                headers=headers,
                 http_version=request.http_version.decode(),
                 method=request.method.decode("ascii").upper(),
                 raw_path=request.target,
+                state=self.connection_state,
             )
         )
+        self.keep_alive_requests += 1
+        await self.context.mark_request()
 
     async def _send_h11_event(self, event: H11SendableEvent) -> None:
         try:
@@ -234,9 +257,11 @@ class H11Protocol:
         await self._send_h11_event(
             h11.Response(
                 status_code=status_code,
-                headers=chain(
-                    [(b"content-length", b"0"), (b"connection", b"close")],
-                    self.config.response_headers("h11"),
+                headers=list(
+                    chain(
+                        [(b"content-length", b"0"), (b"connection", b"close")],
+                        self.config.response_headers("h11"),
+                    )
                 ),
             )
         )
@@ -245,7 +270,7 @@ class H11Protocol:
     async def _maybe_recycle(self) -> None:
         await self._close_stream()
         if (
-            not self.context.terminated
+            not self.context.terminated.is_set()
             and self.connection.our_state is h11.DONE
             and self.connection.their_state is h11.DONE
         ):

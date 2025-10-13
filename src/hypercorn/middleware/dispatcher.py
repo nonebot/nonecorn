@@ -5,8 +5,7 @@ from functools import partial
 from typing import Callable, Dict
 
 from ..asyncio.task_group import TaskGroup
-from ..typing import ASGIFramework, Scope
-from ..utils import invoke_asgi
+from ..typing import ASGIFramework, ASGIReceiveEvent, Scope
 
 MAX_QUEUE_SIZE = 10
 
@@ -21,8 +20,9 @@ class _DispatcherMiddleware:
         else:
             for path, app in self.mounts.items():
                 if scope["path"].startswith(path):
-                    scope["path"] = scope["path"][len(path) :] or "/"
-                    return await invoke_asgi(app, scope, receive, send)
+                    local_scope = scope.copy()
+                    local_scope["root_path"] += path
+                    return await app(local_scope, receive, send)
             await send(
                 {
                     "type": "http.response.start",
@@ -47,7 +47,6 @@ class AsyncioDispatcherMiddleware(_DispatcherMiddleware):
         async with TaskGroup(asyncio.get_event_loop()) as task_group:
             for path, app in self.mounts.items():
                 task_group.spawn(
-                    invoke_asgi,
                     app,
                     scope,
                     self.app_queues[path].get,
@@ -76,14 +75,15 @@ class TrioDispatcherMiddleware(_DispatcherMiddleware):
     async def _handle_lifespan(self, scope: Scope, receive: Callable, send: Callable) -> None:
         import trio
 
-        self.app_queues = {path: trio.open_memory_channel(MAX_QUEUE_SIZE) for path in self.mounts}
+        self.app_queues = {
+            path: trio.open_memory_channel[ASGIReceiveEvent](MAX_QUEUE_SIZE) for path in self.mounts
+        }
         self.startup_complete = {path: False for path in self.mounts}
         self.shutdown_complete = {path: False for path in self.mounts}
 
         async with trio.open_nursery() as nursery:
             for path, app in self.mounts.items():
                 nursery.start_soon(
-                    invoke_asgi,
                     app,
                     scope,
                     self.app_queues[path][1].receive,

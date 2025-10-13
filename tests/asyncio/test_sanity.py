@@ -7,6 +7,7 @@ import h11
 import pytest
 import wsproto
 
+from hypercorn.app_wrappers import ASGIWrapper
 from hypercorn.asyncio.tcp_server import TCPServer
 from hypercorn.asyncio.worker_context import WorkerContext
 from hypercorn.config import Config
@@ -15,9 +16,17 @@ from ..helpers import SANITY_BODY, sanity_framework
 
 
 @pytest.mark.asyncio
-async def test_http1_request(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_http1_request() -> None:
+    event_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+
     server = TCPServer(
-        sanity_framework, event_loop, Config(), WorkerContext(), MemoryReader(), MemoryWriter()  # type: ignore  # noqa: E501
+        ASGIWrapper(sanity_framework),
+        event_loop,
+        Config(),
+        WorkerContext(None),
+        {},
+        MemoryReader(),  # type: ignore
+        MemoryWriter(),  # type: ignore
     )
     task = event_loop.create_task(server.run())
     client = h11.Connection(h11.CLIENT)
@@ -67,9 +76,17 @@ async def test_http1_request(event_loop: asyncio.AbstractEventLoop) -> None:
 
 
 @pytest.mark.asyncio
-async def test_http1_websocket(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_http1_websocket() -> None:
+    event_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+
     server = TCPServer(
-        sanity_framework, event_loop, Config(), WorkerContext(), MemoryReader(), MemoryWriter()  # type: ignore  # noqa: E501
+        ASGIWrapper(sanity_framework),
+        event_loop,
+        Config(),
+        WorkerContext(None),
+        {},
+        MemoryReader(),  # type: ignore
+        MemoryWriter(),  # type: ignore
     )
     task = event_loop.create_task(server.run())
     client = wsproto.WSConnection(wsproto.ConnectionType.CLIENT)
@@ -99,12 +116,15 @@ async def test_http1_websocket(event_loop: asyncio.AbstractEventLoop) -> None:
 
 
 @pytest.mark.asyncio
-async def test_http2_request(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_http2_request() -> None:
+    event_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+
     server = TCPServer(
-        sanity_framework,
+        ASGIWrapper(sanity_framework),
         event_loop,
         Config(),
-        WorkerContext(),
+        WorkerContext(None),
+        {},
         MemoryReader(),  # type: ignore
         MemoryWriter(http2=True),  # type: ignore
     )
@@ -162,12 +182,15 @@ async def test_http2_request(event_loop: asyncio.AbstractEventLoop) -> None:
 
 
 @pytest.mark.asyncio
-async def test_http2_websocket(event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_http2_websocket() -> None:
+    event_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+
     server = TCPServer(
-        sanity_framework,
+        ASGIWrapper(sanity_framework),
         event_loop,
         Config(),
-        WorkerContext(),
+        WorkerContext(None),
+        {},
         MemoryReader(),  # type: ignore
         MemoryWriter(http2=True),  # type: ignore
     )

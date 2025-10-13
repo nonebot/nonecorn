@@ -5,6 +5,7 @@ from typing import Any, cast, List, Tuple
 from unittest.mock import call, Mock
 
 import pytest
+import pytest_asyncio
 from wsproto.events import BytesMessage, TextMessage
 
 from hypercorn.asyncio.task_group import TaskGroup
@@ -20,6 +21,7 @@ from hypercorn.protocol.ws_stream import (
     WSStream,
 )
 from hypercorn.typing import (
+    ConnectionState,
     WebsocketAcceptEvent,
     WebsocketCloseEvent,
     WebsocketResponseBodyEvent,
@@ -161,10 +163,10 @@ def test_handshake_accept_additional_headers() -> None:
     ]
 
 
-@pytest.fixture(name="stream")
+@pytest_asyncio.fixture(name="stream")  # type: ignore[misc]
 async def _stream() -> WSStream:
     stream = WSStream(
-        AsyncMock(), Config(), WorkerContext(), AsyncMock(), False, None, None, AsyncMock(), 1
+        AsyncMock(), Config(), WorkerContext(None), AsyncMock(), False, None, None, AsyncMock(), 1
     )
     stream.task_group.spawn_app.return_value = AsyncMock()  # type: ignore
     stream.app_put = AsyncMock()
@@ -181,13 +183,14 @@ async def test_handle_request(stream: WSStream) -> None:
             headers=[(b"sec-websocket-version", b"13")],
             raw_path=b"/?a=b",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     stream.task_group.spawn_app.assert_called()  # type: ignore
     scope = stream.task_group.spawn_app.call_args[0][2]  # type: ignore
     assert scope == {
         "type": "websocket",
-        "asgi": {"spec_version": "2.3"},
+        "asgi": {"spec_version": "2.3", "version": "3.0"},
         "scheme": "ws",
         "http_version": "2",
         "path": "/",
@@ -199,7 +202,38 @@ async def test_handle_request(stream: WSStream) -> None:
         "server": None,
         "subprotocols": [],
         "extensions": {"websocket.http.response": {}},
+        "state": ConnectionState({}),
     }
+
+
+@pytest.mark.asyncio
+async def test_handle_data_before_acceptance(stream: WSStream) -> None:
+    await stream.handle(
+        Request(
+            stream_id=1,
+            http_version="2",
+            headers=[(b"sec-websocket-version", b"13")],
+            raw_path=b"/?a=b",
+            method="GET",
+            state=ConnectionState({}),
+        )
+    )
+    await stream.handle(
+        Data(
+            stream_id=1,
+            data=b"X",
+        )
+    )
+    assert stream.send.call_args_list == [  # type: ignore
+        call(
+            Response(
+                stream_id=1,
+                headers=[(b"content-length", b"0"), (b"connection", b"close")],
+                status_code=400,
+            )
+        ),
+        call(EndBody(stream_id=1)),
+    ]
 
 
 @pytest.mark.asyncio
@@ -211,6 +245,7 @@ async def test_handle_connection(stream: WSStream) -> None:
             headers=[(b"sec-websocket-version", b"13")],
             raw_path=b"/?a=b",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     await stream.app_send(cast(WebsocketAcceptEvent, {"type": "websocket.accept"}))
@@ -240,6 +275,7 @@ async def test_send_accept(stream: WSStream) -> None:
             headers=[(b"sec-websocket-version", b"13")],
             raw_path=b"/",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     await stream.app_send(cast(WebsocketAcceptEvent, {"type": "websocket.accept"}))
@@ -259,6 +295,7 @@ async def test_send_accept_with_additional_headers(stream: WSStream) -> None:
             headers=[(b"sec-websocket-version", b"13")],
             raw_path=b"/",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     await stream.app_send(
@@ -283,6 +320,7 @@ async def test_send_reject(stream: WSStream) -> None:
             headers=[(b"sec-websocket-version", b"13")],
             raw_path=b"/",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     await stream.app_send(
@@ -297,14 +335,14 @@ async def test_send_reject(stream: WSStream) -> None:
     await stream.app_send(
         cast(WebsocketResponseBodyEvent, {"type": "websocket.http.response.body", "body": b"Body"})
     )
-    assert stream.state == ASGIWebsocketState.HTTPCLOSED
-    stream.send.assert_called()  # type: ignore
-    assert stream.send.call_args_list == [  # type: ignore
+    assert stream.state == ASGIWebsocketState.HTTPCLOSED  # type: ignore
+    stream.send.assert_called()
+    assert stream.send.call_args_list == [
         call(Response(stream_id=1, headers=[], status_code=200)),
         call(Body(stream_id=1, data=b"Body")),
         call(EndBody(stream_id=1)),
     ]
-    stream.config._log.access.assert_called()  # type: ignore
+    stream.config._log.access.assert_called()
 
 
 @pytest.mark.asyncio
@@ -317,6 +355,7 @@ async def test_invalid_server_name(stream: WSStream) -> None:
             headers=[(b"host", b"example.com"), (b"sec-websocket-version", b"13")],
             raw_path=b"/",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     assert stream.send.call_args_list == [  # type: ignore
@@ -342,6 +381,7 @@ async def test_send_app_error_handshake(stream: WSStream) -> None:
             headers=[(b"sec-websocket-version", b"13")],
             raw_path=b"/",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     await stream.app_send(None)
@@ -369,6 +409,7 @@ async def test_send_app_error_connected(stream: WSStream) -> None:
             headers=[(b"sec-websocket-version", b"13")],
             raw_path=b"/",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     await stream.app_send(cast(WebsocketAcceptEvent, {"type": "websocket.accept"}))
@@ -376,7 +417,7 @@ async def test_send_app_error_connected(stream: WSStream) -> None:
     stream.send.assert_called()  # type: ignore
     assert stream.send.call_args_list == [  # type: ignore
         call(Response(stream_id=1, headers=[], status_code=200)),
-        call(Data(stream_id=1, data=b"\x88\x02\x03\xe8")),
+        call(Data(stream_id=1, data=b"\x88\x02\x03\xf3")),
         call(StreamClosed(stream_id=1)),
     ]
     stream.config._log.access.assert_called()  # type: ignore
@@ -391,6 +432,7 @@ async def test_send_connection(stream: WSStream) -> None:
             headers=[(b"sec-websocket-version", b"13")],
             raw_path=b"/",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     await stream.app_send(cast(WebsocketAcceptEvent, {"type": "websocket.accept"}))
@@ -406,7 +448,9 @@ async def test_send_connection(stream: WSStream) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pings(stream: WSStream, event_loop: asyncio.AbstractEventLoop) -> None:
+async def test_pings(stream: WSStream) -> None:
+    event_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+
     stream.config.websocket_ping_interval = 0.1
     await stream.handle(
         Request(
@@ -415,6 +459,7 @@ async def test_pings(stream: WSStream, event_loop: asyncio.AbstractEventLoop) ->
             headers=[(b"sec-websocket-version", b"13")],
             raw_path=b"/?a=b",
             method="GET",
+            state=ConnectionState({}),
         )
     )
     async with TaskGroup(event_loop) as task_group:

@@ -14,18 +14,20 @@ from .events import (
     EndBody,
     EndData,
     Event as StreamEvent,
+    InformationalResponse,
     Request,
     Response,
     StreamClosed,
+    Trailers,
 )
 from .http_stream import HTTPStream
 from .ws_stream import WSStream
 from ..config import Config
 from ..events import Closed, Event, RawData, Updated
-from ..typing import ASGIFramework, Event as IOEvent, TaskGroup, WorkerContext
+from ..typing import AppWrapper, ConnectionState, Event as IOEvent, TaskGroup, WorkerContext
 from ..utils import filter_pseudo_headers
 
-BUFFER_HIGH_WATER = 2 * 2 ** 14  # Twice the default max frame size (two frames worth)
+BUFFER_HIGH_WATER = 2 * 2**14  # Twice the default max frame size (two frames worth)
 BUFFER_LOW_WATER = BUFFER_HIGH_WATER / 2
 
 
@@ -79,10 +81,11 @@ class StreamBuffer:
 class H2Protocol:
     def __init__(
         self,
-        app: ASGIFramework,
+        app: AppWrapper,
         config: Config,
         context: WorkerContext,
         task_group: TaskGroup,
+        connection_state: ConnectionState,
         ssl: bool,
         client: Optional[Tuple[str, int]],
         server: Optional[Tuple[str, int]],
@@ -94,6 +97,7 @@ class H2Protocol:
         self.config = config
         self.context = context
         self.task_group = task_group
+        self.connection_state = connection_state
 
         self.connection = h2.connection.H2Connection(
             config=h2.config.H2Configuration(client_side=False, header_encoding=None)
@@ -108,6 +112,7 @@ class H2Protocol:
             },
         )
 
+        self.keep_alive_requests = 0
         self.send = send
         self.server = server
         self.ssl = ssl
@@ -194,7 +199,7 @@ class H2Protocol:
 
     async def stream_send(self, event: StreamEvent) -> None:
         try:
-            if isinstance(event, Response):
+            if isinstance(event, (InformationalResponse, Response)):
                 self.connection.send_headers(
                     event.stream_id,
                     [(b":status", b"%d" % event.status_code)]
@@ -211,12 +216,15 @@ class H2Protocol:
                 self.priority.unblock(event.stream_id)
                 await self.has_data.set()
                 await self.stream_buffers[event.stream_id].drain()
+            elif isinstance(event, Trailers):
+                self.connection.send_headers(event.stream_id, event.headers)
+                await self._flush()
             elif isinstance(event, StreamClosed):
                 await self._close_stream(event.stream_id)
                 idle = len(self.streams) == 0 or all(
                     stream.idle for stream in self.streams.values()
                 )
-                if idle and self.context.terminated:
+                if idle and self.context.terminated.is_set():
                     self.connection.close_connection()
                     await self._flush()
                 await self.send(Updated(idle=idle))
@@ -235,7 +243,7 @@ class H2Protocol:
     async def _handle_events(self, events: List[h2.events.Event]) -> None:
         for event in events:
             if isinstance(event, h2.events.RequestReceived):
-                if self.context.terminated:
+                if self.context.terminated.is_set():
                     self.connection.reset_stream(event.stream_id)
                     self.connection.update_settings(
                         {h2.settings.SettingCodes.MAX_CONCURRENT_STREAMS: 0}
@@ -243,6 +251,9 @@ class H2Protocol:
                 else:
                     await self._create_stream(event)
                     await self.send(Updated(idle=False))
+
+                if self.keep_alive_requests > self.config.keep_alive_max_requests:
+                    self.connection.close_connection()
             elif isinstance(event, h2.events.DataReceived):
                 await self.streams[event.stream_id].handle(
                     Body(stream_id=event.stream_id, data=event.data)
@@ -251,7 +262,12 @@ class H2Protocol:
                     event.flow_controlled_length, event.stream_id
                 )
             elif isinstance(event, h2.events.StreamEnded):
-                await self.streams[event.stream_id].handle(EndBody(stream_id=event.stream_id))
+                try:
+                    await self.streams[event.stream_id].handle(EndBody(stream_id=event.stream_id))
+                except KeyError:
+                    # Response sent before full request received,
+                    # nothing to do already closed.
+                    pass
             elif isinstance(event, h2.events.StreamReset):
                 await self._close_stream(event.stream_id)
                 await self._window_updated(event.stream_id)
@@ -346,8 +362,11 @@ class H2Protocol:
                 http_version="2",
                 method=method,
                 raw_path=raw_path,
+                state=self.connection_state,
             )
         )
+        self.keep_alive_requests += 1
+        await self.context.mark_request()
 
     async def _create_server_push(
         self, stream_id: int, path: bytes, headers: List[Tuple[bytes, bytes]]
@@ -373,6 +392,7 @@ class H2Protocol:
             event.headers = request_headers
             await self._create_stream(event)
             await self.streams[event.stream_id].handle(EndBody(stream_id=event.stream_id))
+            self.keep_alive_requests += 1
 
     async def _close_stream(self, stream_id: int) -> None:
         if stream_id in self.streams:

@@ -7,9 +7,8 @@ Most usage of Hypercorn is expected to be via the command line, as
 explained in the :ref:`usage` documentation. Alternatively it is
 possible to use Hypercorn programmatically via the ``serve`` function
 available for either the asyncio or trio :ref:`workers` (note the
-asyncio ``serve`` can be used with uvloop). In Python 3.7, or better,
-this can be done as follows, first you need to create a Hypercorn
-Config instance,
+asyncio ``serve`` can be used with uvloop). This can be done as
+follows, first you need to create a Hypercorn Config instance,
 
 .. code-block:: python
 
@@ -18,8 +17,8 @@ Config instance,
     config = Config()
     config.bind = ["localhost:8080"]  # As an example configuration setting
 
-Then assuming you have an ASGI framework instance called ``app``,
-using asyncio,
+Then assuming you have an ASGI or WSGI framework instance called
+``app``, using asyncio,
 
 .. code-block:: python
 
@@ -115,3 +114,10 @@ exception handler,
             loop.default_exception_handler(context)
 
     loop.set_exception_handler(_exception_handler)
+
+Forcing ASGI or WSGI mode
+-------------------------
+
+The ``serve`` function takes a ``mode`` argument that can be
+``"asgi"`` or ``"wsgi"`` to force the app to be considered ASGI or
+WSGI as required.
