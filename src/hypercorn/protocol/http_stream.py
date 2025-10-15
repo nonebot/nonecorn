@@ -204,7 +204,7 @@ class HTTPStream:
                         Body(
                             stream_id=self.stream_id,
                             data=bytes(message.get("body", b"")),
-                            flush=message.get("flush", False) or self.trailers_expected,
+                            flush=message.get("flush", False) # or self.trailers_expected,
                         )
                     )
 
@@ -265,14 +265,15 @@ class HTTPStream:
                         with open(message["path"], "rb") as f:
                             while chunk := f.read(65536):
                                 await self.send(Body(stream_id=self.stream_id, data=chunk))
-
-                if self.state != ASGIHTTPState.CLOSED:
-                    self.state = ASGIHTTPState.CLOSED
-                    await self.config.log.access(
-                        self.scope, self.response, time() - self.start_time
-                    )
-                    await self.send(EndBody(stream_id=self.stream_id))
-                    await self.send(StreamClosed(stream_id=self.stream_id))
+                
+                if not message.get("more_body", False) and not self.trailers_expected:
+                    if self.state != ASGIHTTPState.CLOSED:
+                        self.state = ASGIHTTPState.CLOSED
+                        await self.config.log.access(
+                            self.scope, self.response, time() - self.start_time
+                        )
+                        await self.send(EndBody(stream_id=self.stream_id))
+                        await self.send(StreamClosed(stream_id=self.stream_id))
             elif message["type"] == "http.response.trailers" and self.state == ASGIHTTPState.RESPONSE:
                 headers = message.get("headers", [])
                 more_trailers = message.get("more_trailers", False)
