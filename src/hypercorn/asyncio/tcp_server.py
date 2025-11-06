@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Generator
 from ssl import SSLError
-from typing import Any, Dict, Generator, IO, Optional
+from typing import Any, IO, Optional
 
 from .task_group import TaskGroup
 from .worker_context import AsyncioSingleTask, WorkerContext
@@ -41,7 +42,7 @@ class TCPServer:
         self.state = state
         self.idle_task = AsyncioSingleTask()
 
-    def __await__(self) -> Generator[Any, None, None]:
+    def __await__(self) -> Generator[Any]:
         return self.run().__await__()
 
     async def run(self) -> None:

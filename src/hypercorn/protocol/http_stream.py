@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Awaitable, Callable
 from enum import auto, Enum
 from time import time
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 from urllib.parse import unquote
 
 from .events import (
@@ -56,11 +56,11 @@ class HTTPStream:
         context: WorkerContext,
         task_group: TaskGroup,
         ssl: bool,
-        client: Optional[Tuple[str, int]],
-        server: Optional[Tuple[str, int]],
+        client: tuple[str, int] | None,
+        server: tuple[str, int] | None,
         send: Callable[[Event], Awaitable[None]],
         stream_id: int,
-        tls: Optional[dict] = None,
+        tls: dict | None = None,
     ) -> None:
         self.app = app
         self.client = client
@@ -145,7 +145,7 @@ class HTTPStream:
         elif isinstance(event, TrailerHeadersSend):
             await self.app_put({"type": "http.request.trailers", "headers": event.headers})
 
-    async def app_send(self, message: Optional[ASGISendEvent]) -> None:
+    async def app_send(self, message: ASGISendEvent | None) -> None:
         if message is None:  # ASGI App has finished sending messages
             if not self.closed:
                 # Cleanup if required

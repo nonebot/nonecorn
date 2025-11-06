@@ -6,25 +6,13 @@ import os
 import socket
 import ssl
 import sys
+from collections.abc import Awaitable, Callable, Iterable
 from enum import Enum
 from functools import lru_cache
 from importlib import import_module
 from multiprocessing.synchronize import Event as EventType
 from pathlib import Path
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    cast,
-    Dict,
-    Final,
-    Iterable,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    TYPE_CHECKING,
-)
+from typing import Any, cast, Literal, Final, TYPE_CHECKING
 
 try:
     from uvloop import Loop
@@ -73,9 +61,9 @@ def suppress_body(method: str, status_code: int) -> bool:
     return method == "HEAD" or 100 <= status_code < 200 or status_code in {204, 304}
 
 
-def build_and_validate_headers(headers: Iterable[Tuple[bytes, bytes]]) -> List[Tuple[bytes, bytes]]:
+def build_and_validate_headers(headers: Iterable[tuple[bytes, bytes]]) -> list[tuple[bytes, bytes]]:
     # Validates that the header name and value are bytes
-    validated_headers: List[Tuple[bytes, bytes]] = []
+    validated_headers: list[tuple[bytes, bytes]] = []
     for name, value in headers:
         if name[0] == b":"[0]:
             raise ValueError("Pseudo headers are not valid")
@@ -83,8 +71,8 @@ def build_and_validate_headers(headers: Iterable[Tuple[bytes, bytes]]) -> List[T
     return validated_headers
 
 
-def filter_pseudo_headers(headers: List[Tuple[bytes, bytes]]) -> List[Tuple[bytes, bytes]]:
-    filtered_headers: List[Tuple[bytes, bytes]] = [(b"host", b"")]  # Placeholder
+def filter_pseudo_headers(headers: list[tuple[bytes, bytes]]) -> list[tuple[bytes, bytes]]:
+    filtered_headers: list[tuple[bytes, bytes]] = [(b"host", b"")]  # Placeholder
     authority = None
     host = b""
     for name, value in headers:
@@ -99,7 +87,7 @@ def filter_pseudo_headers(headers: List[Tuple[bytes, bytes]]) -> List[Tuple[byte
 
 
 def load_application(path: str, wsgi_max_body_size: int) -> AppWrapper:
-    mode: Optional[Literal["asgi", "wsgi"]] = None
+    mode: Literal["asgi", "wsgi"] | None = None
     if ":" not in path:
         module_name, app_name = path, "app"
     elif path.count(":") == 2:
@@ -131,7 +119,7 @@ def load_application(path: str, wsgi_max_body_size: int) -> AppWrapper:
 
 
 def wrap_app(
-    app: Framework, wsgi_max_body_size: int, mode: Optional[Literal["asgi", "wsgi"]]
+    app: Framework, wsgi_max_body_size: int, mode: Literal["asgi", "wsgi"] | None
 ) -> AppWrapper:
     if mode is None:
         mode = "asgi" if is_asgi(app) else "wsgi"
@@ -141,8 +129,8 @@ def wrap_app(
         return WSGIWrapper(cast(WSGIFramework, app), wsgi_max_body_size)
 
 
-def files_to_watch() -> Dict[Path, float]:
-    last_updates: Dict[Path, float] = {}
+def files_to_watch() -> dict[Path, float]:
+    last_updates: dict[Path, float] = {}
     for module in list(sys.modules.values()):
         filename = getattr(module, "__file__", None)
         if filename is None:
@@ -155,7 +143,7 @@ def files_to_watch() -> Dict[Path, float]:
     return last_updates
 
 
-def check_for_updates(files: Dict[Path, float]) -> bool:
+def check_for_updates(files: dict[Path, float]) -> bool:
     for path, last_mtime in files.items():
         try:
             mtime = path.stat().st_mtime
@@ -188,7 +176,7 @@ def write_pid_file(pid_path: str) -> None:
         file_.write(f"{os.getpid()}")
 
 
-def parse_socket_addr(family: int, address: tuple) -> Optional[Tuple[str, int]]:
+def parse_socket_addr(family: int, address: tuple) -> tuple[str, int] | None:
     if family == socket.AF_INET:
         return address
     elif family == socket.AF_INET6:
@@ -208,7 +196,7 @@ def repr_socket_addr(family: int, address: tuple) -> str:
         return f"{address}"
 
 
-def valid_server_name(config: Config, request: "Request") -> bool:
+def valid_server_name(config: Config, request: Request) -> bool:
     if len(config.server_names) == 0:
         return True
 
@@ -232,7 +220,7 @@ RDNS_MAPPING: dict[str, str] = {
     "userId": "UID",
 }
 
-TLS_VERSION_MAP: Dict[str, int] = {
+TLS_VERSION_MAP: dict[str, int] = {
     "TLSv1": 0x0301,
     "TLSv1.1": 0x0302,
     "TLSv1.2": 0x0303,
@@ -620,7 +608,7 @@ def escape_dn_chars(s: str) -> str:
     return s
 
 
-def get_tls_info(ssl_object: ssl.SSLObject) -> Optional[Dict]:
+def get_tls_info(ssl_object: ssl.SSLObject) -> dict | None:
     """
     # Copyed from https://github.com/encode/uvicorn/pull/1119. todo Let's see if it becomes the final solution
     # server_cert: Unable to set from transport information
@@ -630,7 +618,7 @@ def get_tls_info(ssl_object: ssl.SSLObject) -> Optional[Dict]:
     # tls_version:
     # cipher_suite: Too hard to convert without direct access to openssl
     """
-    ssl_info: Dict[str, Any] = {
+    ssl_info: dict[str, Any] = {
         "server_cert": None,
         "client_cert_chain": [],
         "client_cert_name": None,

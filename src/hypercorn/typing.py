@@ -1,22 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Iterable
 from multiprocessing.synchronize import Event as EventType
 from types import TracebackType
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    Iterable,
-    Literal,
-    NewType,
-    Optional,
-    Protocol,
-    Tuple,
-    Type,
-    TypedDict,
-    Union,
-)
+from typing import Any, Literal, NewType, Optional, Protocol, TypedDict
 
 import h2.events
 import h11
@@ -28,18 +15,18 @@ try:
 except ImportError:
     from typing_extensions import NotRequired
 
-H11SendableEvent = Union[h11.Data, h11.EndOfMessage, h11.InformationalResponse, h11.Response]
+H11SendableEvent = h11.Data | h11.EndOfMessage | h11.InformationalResponse | h11.Response
 
 WorkerFunc = Callable[[Config, Optional[Sockets], Optional[EventType]], None]
 
-LifespanState = Dict[str, Any]
+LifespanState = dict[str, Any]
 
-ConnectionState = NewType("ConnectionState", Dict[str, Any])
+ConnectionState = NewType("ConnectionState", dict[str, Any])
 
 
 class ASGIVersions(TypedDict, total=False):
     spec_version: str
-    version: Union[Literal["2.0"], Literal["3.0"]]
+    version: Literal["2.0"] | Literal["3.0"]
 
 
 class HTTPScope(TypedDict):
@@ -52,11 +39,11 @@ class HTTPScope(TypedDict):
     raw_path: bytes
     query_string: bytes
     root_path: str
-    headers: Iterable[Tuple[bytes, bytes]]
-    client: Optional[Tuple[str, int]]
-    server: Optional[Tuple[str, Optional[int]]]
+    headers: Iterable[tuple[bytes, bytes]]
+    client: tuple[str, int] | None
+    server: tuple[str, int | None] | None
     state: ConnectionState
-    extensions: Dict[str, dict]
+    extensions: dict[str, dict]
 
 
 class WebsocketScope(TypedDict):
@@ -68,12 +55,12 @@ class WebsocketScope(TypedDict):
     raw_path: bytes
     query_string: bytes
     root_path: str
-    headers: Iterable[Tuple[bytes, bytes]]
-    client: Optional[Tuple[str, int]]
-    server: Optional[Tuple[str, Optional[int]]]
+    headers: Iterable[tuple[bytes, bytes]]
+    client: tuple[str, int] | None
+    server: tuple[str, int | None] | None
     subprotocols: Iterable[str]
     state: ConnectionState
-    extensions: Dict[str, dict]
+    extensions: dict[str, dict]
 
 
 class LifespanScope(TypedDict):
@@ -82,8 +69,8 @@ class LifespanScope(TypedDict):
     state: LifespanState
 
 
-WWWScope = Union[HTTPScope, WebsocketScope]
-Scope = Union[HTTPScope, WebsocketScope, LifespanScope]
+WWWScope = HTTPScope | WebsocketScope
+Scope = HTTPScope | WebsocketScope | LifespanScope
 
 
 class HTTPRequestEvent(TypedDict):
@@ -95,7 +82,7 @@ class HTTPRequestEvent(TypedDict):
 class HTTPResponseStartEvent(TypedDict):
     type: Literal["http.response.start"]
     status: int
-    headers: Iterable[Tuple[bytes, bytes]]
+    headers: Iterable[tuple[bytes, bytes]]
     trailers: NotRequired[bool]
 
 
@@ -103,13 +90,13 @@ class HTTPResponseBodyEvent(TypedDict):
     type: Literal["http.response.body"]
     body: bytes
     more_body: bool
-    headers: NotRequired[Iterable[Tuple[bytes, bytes]]]
+    headers: NotRequired[Iterable[tuple[bytes, bytes]]]
 
 
 class HTTPServerPushEvent(TypedDict):
     type: Literal["http.response.push"]
     path: str
-    headers: Iterable[Tuple[bytes, bytes]]
+    headers: Iterable[tuple[bytes, bytes]]
 
 
 class HTTPZeroCopySendEvent(TypedDict):
@@ -122,7 +109,7 @@ class HTTPZeroCopySendEvent(TypedDict):
 
 class HTTPResponseTrailersEvent(TypedDict):
     type: Literal["http.response.trailers"]
-    headers: Iterable[Tuple[bytes, bytes]]
+    headers: Iterable[tuple[bytes, bytes]]
     more_trailers: NotRequired[bool]
 
 
@@ -146,26 +133,26 @@ class WebsocketConnectEvent(TypedDict):
 
 class WebsocketAcceptEvent(TypedDict):
     type: Literal["websocket.accept"]
-    subprotocol: Optional[str]
-    headers: Iterable[Tuple[bytes, bytes]]
+    subprotocol: str | None
+    headers: Iterable[tuple[bytes, bytes]]
 
 
 class WebsocketReceiveEvent(TypedDict):
     type: Literal["websocket.receive"]
-    bytes: Optional[bytes]
-    text: Optional[str]
+    bytes: bytes | None
+    text: str | None
 
 
 class WebsocketSendEvent(TypedDict):
     type: Literal["websocket.send"]
-    bytes: Optional[bytes]
-    text: Optional[str]
+    bytes: bytes | None
+    text: str | None
 
 
 class WebsocketResponseStartEvent(TypedDict):
     type: Literal["websocket.http.response.start"]
     status: int
-    headers: Iterable[Tuple[bytes, bytes]]
+    headers: Iterable[tuple[bytes, bytes]]
 
 
 class WebsocketResponseBodyEvent(TypedDict):
@@ -182,7 +169,7 @@ class WebsocketDisconnectEvent(TypedDict):
 class WebsocketCloseEvent(TypedDict):
     type: Literal["websocket.close"]
     code: int
-    reason: Optional[str]
+    reason: str | None
 
 
 class LifespanStartupEvent(TypedDict):
@@ -211,34 +198,34 @@ class LifespanShutdownFailedEvent(TypedDict):
     message: str
 
 
-ASGIReceiveEvent = Union[
-    HTTPRequestEvent,
-    HTTPDisconnectEvent,
-    WebsocketConnectEvent,
-    WebsocketReceiveEvent,
-    WebsocketDisconnectEvent,
-    LifespanStartupEvent,
-    LifespanShutdownEvent,
-]
+ASGIReceiveEvent = (
+    HTTPRequestEvent
+    | HTTPDisconnectEvent
+    | WebsocketConnectEvent
+    | WebsocketReceiveEvent
+    | WebsocketDisconnectEvent
+    | LifespanStartupEvent
+    | LifespanShutdownEvent
+)
 
-ASGISendEvent = Union[
-    HTTPResponseStartEvent,
-    HTTPResponseBodyEvent,
-    HTTPServerPushEvent,
-    HTTPZeroCopySendEvent,
-    HTTPResponseTrailersEvent,
-    HTTPEarlyHintEvent,
-    HTTPDisconnectEvent,
-    WebsocketAcceptEvent,
-    WebsocketSendEvent,
-    WebsocketResponseStartEvent,
-    WebsocketResponseBodyEvent,
-    WebsocketCloseEvent,
-    LifespanStartupCompleteEvent,
-    LifespanStartupFailedEvent,
-    LifespanShutdownCompleteEvent,
-    LifespanShutdownFailedEvent,
-]
+ASGISendEvent = (
+    HTTPResponseStartEvent
+    | HTTPResponseBodyEvent
+    | HTTPServerPushEvent
+    | HTTPZeroCopySendEvent
+    | HTTPResponseTrailersEvent
+    | HTTPEarlyHintEvent
+    | HTTPDisconnectEvent
+    | WebsocketAcceptEvent
+    | WebsocketSendEvent
+    | WebsocketResponseStartEvent
+    | WebsocketResponseBodyEvent
+    | WebsocketCloseEvent
+    | LifespanStartupCompleteEvent
+    | LifespanStartupFailedEvent
+    | LifespanShutdownCompleteEvent
+    | LifespanShutdownFailedEvent
+)
 
 ASGIReceiveCallable = Callable[[], Awaitable[ASGIReceiveEvent]]
 ASGISendCallable = Callable[[ASGISendEvent], Awaitable[None]]
@@ -252,7 +239,7 @@ ASGIFramework = Callable[
     Awaitable[None],
 ]
 WSGIFramework = Callable[[dict, Callable], Iterable[bytes]]
-Framework = Union[ASGIFramework, WSGIFramework]
+Framework = ASGIFramework | WSGIFramework
 
 
 class H2SyncStream(Protocol):
@@ -274,8 +261,8 @@ class H2SyncStream(Protocol):
         self,
         event: h2.events.RequestReceived,
         scheme: str,
-        client: Tuple[str, int],
-        server: Tuple[str, int],
+        client: tuple[str, int],
+        server: tuple[str, int],
     ) -> None:
         pass
 
@@ -299,8 +286,8 @@ class H2AsyncStream(Protocol):
         self,
         event: h2.events.RequestReceived,
         scheme: str,
-        client: Tuple[str, int],
-        server: Tuple[str, int],
+        client: tuple[str, int],
+        server: tuple[str, int],
     ) -> None:
         pass
 
@@ -323,8 +310,8 @@ class Event(Protocol):
 
 
 class WorkerContext(Protocol):
-    event_class: Type[Event]
-    single_task_class: Type[SingleTask]
+    event_class: type[Event]
+    single_task_class: type[SingleTask]
     terminate: Event
     terminated: Event
 
@@ -332,7 +319,7 @@ class WorkerContext(Protocol):
         pass
 
     @staticmethod
-    async def sleep(wait: Union[float, int]) -> None:
+    async def sleep(wait: float | int) -> None:
         pass
 
     @staticmethod
@@ -346,7 +333,7 @@ class TaskGroup(Protocol):
         app: AppWrapper,
         config: Config,
         scope: Scope,
-        send: Callable[[Optional[ASGISendEvent]], Awaitable[None]],
+        send: Callable[[ASGISendEvent | None], Awaitable[None]],
     ) -> Callable[[ASGIReceiveEvent], Awaitable[None]]:
         pass
 
@@ -362,7 +349,7 @@ class TaskGroup(Protocol):
 
 class ResponseSummary(TypedDict):
     status: int
-    headers: Iterable[Tuple[bytes, bytes]]
+    headers: Iterable[tuple[bytes, bytes]]
 
 
 class AppWrapper(Protocol):

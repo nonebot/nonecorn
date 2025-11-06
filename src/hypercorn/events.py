@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass
-from typing import IO, Optional, Tuple
+from typing import IO
 
 
 class Event(ABC):
@@ -12,14 +12,14 @@ class Event(ABC):
 @dataclass(frozen=True)
 class RawData(Event):
     data: bytes
-    address: Optional[Tuple[str, int]] = None
+    address: tuple[str, int] | None = None
 
 
 @dataclass(frozen=True)
 class ZeroCopySend(Event):
     file: IO[bytes]
-    offset: Optional[int] = None
-    count: Optional[int] = None
+    offset: int | None = None
+    count: int | None = None
 
 
 @dataclass(frozen=True)

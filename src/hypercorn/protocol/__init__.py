@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, Union
+from collections.abc import Awaitable, Callable
 
 from .h2 import H2Protocol
 from .h11 import H2CProtocolRequiredError, H2ProtocolAssumedError, H11Protocol
@@ -18,11 +18,11 @@ class ProtocolWrapper:
         task_group: TaskGroup,
         state: ConnectionState,
         ssl: bool,
-        client: Optional[Tuple[str, int]],
-        server: Optional[Tuple[str, int]],
+        client: tuple[str, int] | None,
+        server: tuple[str, int] | None,
         send: Callable[[Event], Awaitable[None]],
-        alpn_protocol: Optional[str] = None,
-        tls: Optional[dict] = None,
+        alpn_protocol: str | None = None,
+        tls: dict | None = None,
     ) -> None:
         self.app = app
         self.config = config
@@ -33,7 +33,7 @@ class ProtocolWrapper:
         self.server = server
         self.send = send
         self.state = state
-        self.protocol: Union[H11Protocol, H2Protocol]
+        self.protocol: H11Protocol | H2Protocol
         self.tls = tls
         if alpn_protocol == "h2":
             self.protocol = H2Protocol(
