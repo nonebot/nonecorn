@@ -102,7 +102,7 @@ class HTTPStream:
                 "headers": event.headers,
                 "client": self.client,
                 "server": self.server,
-                "state": event.state.copy(),
+                "state": event.state.copy(),  # type: ignore[typeddict-item]
                 "extensions": {},
             }
             self.scope["extensions"]["http.response.trailers"] = {}
