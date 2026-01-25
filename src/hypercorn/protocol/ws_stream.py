@@ -14,6 +14,7 @@ from wsproto.events import (
     Event as WSProtoEvent,
     Message,
     Ping,
+    Pong,
     TextMessage,
 )
 from wsproto.extensions import Extension, PerMessageDeflate
@@ -346,6 +347,10 @@ class WSStream:
                     )
                 )
                 await self.send(EndData(stream_id=self.stream_id))
+            elif message["type"] == "websocket.ping" and self.state == ASGIWebsocketState.CONNECTED:
+                await self._send_wsproto_event(Ping(payload=message.get("data", b"")))
+            elif message["type"] == "websocket.pong" and self.state == ASGIWebsocketState.CONNECTED:
+                await self._send_wsproto_event(Pong(payload=message.get("data", b"")))
             else:
                 raise UnexpectedMessageError(self.state, message["type"])
 
@@ -364,7 +369,13 @@ class WSStream:
                     await self.app_put(self.buffer.to_message())
                     self.buffer.clear()
             elif isinstance(event, Ping):
-                await self._send_wsproto_event(event.response())
+                if not self.config.handle_ws_ping:
+                    await self._send_wsproto_event(event.response())
+                else:
+                    await self.app_put({"type": "websocket.ping", "data": event.payload})
+            elif isinstance(event, Pong):
+                if self.config.handle_ws_ping:
+                    await self.app_put({"type": "websocket.pong", "data": event.payload})
             elif isinstance(event, CloseConnection):
                 if self.connection.state == ConnectionState.REMOTE_CLOSING:
                     await self._send_wsproto_event(event.response())

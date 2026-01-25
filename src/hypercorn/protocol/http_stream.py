@@ -204,7 +204,7 @@ class HTTPStream:
                         Body(
                             stream_id=self.stream_id,
                             data=bytes(message.get("body", b"")),
-                            flush=message.get("flush", False) # or self.trailers_expected,
+                            flush=message.get("flush", False),  # or self.trailers_expected,
                         )
                     )
 
@@ -218,7 +218,10 @@ class HTTPStream:
                             EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
                         )
                         await self.send(StreamClosed(stream_id=self.stream_id))
-            elif message["type"] == "http.response.zerocopysend" and self.state == ASGIHTTPState.RESPONSE:
+            elif (
+                message["type"] == "http.response.zerocopysend"
+                and self.state == ASGIHTTPState.RESPONSE
+            ):
                 if (
                     not suppress_body(self.scope["method"], int(self.response["status"]))
                     and message.get("file") is not None
@@ -242,7 +245,9 @@ class HTTPStream:
                             EndBody(stream_id=self.stream_id, headers=message.get("headers", []))
                         )
                         await self.send(StreamClosed(stream_id=self.stream_id))
-            elif message["type"] == "http.response.pathsend" and self.state == ASGIHTTPState.RESPONSE:
+            elif (
+                message["type"] == "http.response.pathsend" and self.state == ASGIHTTPState.RESPONSE
+            ):
                 if not suppress_body(
                     self.scope["method"], int(self.response["status"])
                 ) and os.path.exists(message["path"]):
@@ -265,7 +270,7 @@ class HTTPStream:
                         with open(message["path"], "rb") as f:
                             while chunk := f.read(65536):
                                 await self.send(Body(stream_id=self.stream_id, data=chunk))
-                
+
                 if not message.get("more_body", False) and not self.trailers_expected:
                     if self.state != ASGIHTTPState.CLOSED:
                         self.state = ASGIHTTPState.CLOSED
@@ -274,7 +279,9 @@ class HTTPStream:
                         )
                         await self.send(EndBody(stream_id=self.stream_id))
                         await self.send(StreamClosed(stream_id=self.stream_id))
-            elif message["type"] == "http.response.trailers" and self.state == ASGIHTTPState.RESPONSE:
+            elif (
+                message["type"] == "http.response.trailers" and self.state == ASGIHTTPState.RESPONSE
+            ):
                 headers = message.get("headers", [])
                 more_trailers = message.get("more_trailers", False)
                 for name, value in self.scope["headers"]:
@@ -282,7 +289,9 @@ class HTTPStream:
                         headers = build_and_validate_headers(headers)
                         await self.send(
                             TrailerHeadersSend(
-                                stream_id=self.stream_id, headers=headers, end_stream=not more_trailers
+                                stream_id=self.stream_id,
+                                headers=headers,
+                                end_stream=not more_trailers,
                             )
                         )
                         break
