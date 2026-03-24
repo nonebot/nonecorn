@@ -220,7 +220,9 @@ class H11Protocol:
                 elif isinstance(event, h11.Data):
                     await self.stream.handle(Body(stream_id=STREAM_ID, data=event.data))
                 elif isinstance(event, h11.EndOfMessage):
-                    await self.stream.handle(EndBody(stream_id=STREAM_ID))
+                    await self.stream.handle(
+                        EndBody(stream_id=STREAM_ID, headers=list(event.headers))
+                    )
                 elif isinstance(event, Data):
                     # WebSocket pass through
                     await self.stream.handle(event)

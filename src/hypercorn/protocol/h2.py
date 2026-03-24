@@ -310,6 +310,10 @@ class H2Protocol:
                     await self._window_updated(None)
             elif isinstance(event, h2.events.ConnectionTerminated):
                 await self.send(Closed())
+            elif isinstance(event, h2.events.TrailersReceived):
+                await self.streams[event.stream_id].handle(
+                    TrailerHeadersSend(stream_id=event.stream_id, headers=event.headers)
+                )
         await self._flush()
 
     async def _flush(self) -> None:

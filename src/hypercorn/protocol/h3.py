@@ -59,7 +59,7 @@ class H3Protocol:
                     await self._create_stream(event)
                     if event.stream_ended:
                         await self.streams[event.stream_id].handle(
-                            EndBody(stream_id=event.stream_id)
+                            EndBody(stream_id=event.stream_id, headers=event.headers)
                         )
             elif isinstance(event, DataReceived):
                 await self.streams[event.stream_id].handle(

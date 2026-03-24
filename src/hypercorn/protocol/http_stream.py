@@ -134,12 +134,16 @@ class HTTPStream:
             )
         elif isinstance(event, EndBody):
             await self.app_put({"type": "http.request", "body": b"", "more_body": False})
+            if event.headers:
+                await self.app_put({"type": "http.request.trailers", "headers": event.headers})
         elif isinstance(event, StreamClosed):
             self.closed = True
             if self.state != ASGIHTTPState.CLOSED:
                 await self.config.log.access(self.scope, None, time() - self.start_time)
             if self.app_put is not None:
                 await self.app_put({"type": "http.disconnect"})
+        elif isinstance(event, TrailerHeadersSend):
+            await self.app_put({"type": "http.request.trailers", "headers": event.headers})
 
     async def app_send(self, message: Optional[ASGISendEvent]) -> None:
         if message is None:  # ASGI App has finished sending messages
