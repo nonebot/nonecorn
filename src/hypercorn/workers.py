@@ -2,7 +2,8 @@ import asyncio
 import signal
 from functools import partial
 from ssl import VerifyFlags, VerifyMode
-from typing import Any, Awaitable, Callable, List
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from gunicorn.config import (
     make_settings,
@@ -26,7 +27,7 @@ class Config(_Config):
         return self.sockets
 
 
-def transfer_sock(gunicorn_sock: List[TCPSocket]) -> Sockets:
+def transfer_sock(gunicorn_sock: list[TCPSocket]) -> Sockets:
     secure_sockets = []
     insecure_sockets = []
     for sock in gunicorn_sock:
