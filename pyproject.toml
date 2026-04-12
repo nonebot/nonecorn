@@ -21,10 +21,8 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-include = ["src/hypercorn/py.typed"]
 license = {text = "MIT"}
 readme = "README.rst"
-repository = "https://github.com/pgjones/hypercorn/"
 dependencies = [
     "exceptiongroup >= 1.1.0; python_version < '3.11'",
     "h11",
@@ -35,8 +33,11 @@ dependencies = [
     "typing_extensions; python_version < '3.11'",
     "wsproto >= 0.14.0"
 ]
-documentation = "https://hypercorn.readthedocs.io"
 requires-python = ">=3.10"
+
+[project.urls]
+Repository = "https://github.com/pgjones/hypercorn/"
+Documentation = "https://hypercorn.readthedocs.io"
 
 [project.optional-dependencies]
 docs = ["pydata_sphinx_theme", "sphinxcontrib_mermaid"]
@@ -57,6 +58,15 @@ dev = [
 
 [project.scripts]
 hypercorn = "hypercorn.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hypercorn = ["py.typed"]
 
 [tool.black]
 line-length = 100
@@ -107,5 +117,5 @@ asyncio_mode = "strict"
 testpaths = ["tests"]
 
 [build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
