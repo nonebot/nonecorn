@@ -292,8 +292,8 @@ class HypercornAsyncioWorker(Worker):
 
     def __init__(self, *args: Any, **kwargs: Any):
         super(HypercornAsyncioWorker, self).__init__(*args, **kwargs)
-        self.cfg.settings = make_settings()  # 解除settings的限制
-        self.app.load_config()  # 重新解析配置文件
+        self.app.do_load_config()  # 重新解析配置文件
+        self.cfg = self.app.cfg
         config_kwargs = {
             "access_log_format": self.cfg.access_log_format,
             "accesslog": self.cfg.accesslog,
