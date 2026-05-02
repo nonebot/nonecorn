@@ -157,6 +157,16 @@ class h2_max_inbound_frame_size(GunicornSetting):
     desc = "h2_max_inbound_frame_size"
 
 
+class handle_ws_ping(GunicornSetting):
+    name = "handle_ws_ping"
+    section = "Server Mechanics"
+    cli = ["--handle_ws_ping"]
+    action = "store_true"
+    validator = validate_bool
+    default = True
+    desc = "handle_ws_ping"
+
+
 class include_date_header(GunicornSetting):
     name = "include_date_header"
     section = "Server Mechanics"
@@ -319,6 +329,7 @@ class HypercornAsyncioWorker(Worker):
             "h2_max_concurrent_streams": getattr(self.cfg, "h2_max_concurrent_streams", None),
             "h2_max_header_list_size": getattr(self.cfg, "h2_max_header_list_size", None),
             "h2_max_inbound_frame_size": getattr(self.cfg, "h2_max_inbound_frame_size", None),
+            "handle_ws_ping": getattr(self.cfg, "handle_ws_ping", None),
             "include_date_header": getattr(self.cfg, "include_date_header", None),
             "include_server_header": getattr(self.cfg, "include_server_header", None),
             "max_app_queue_size": getattr(self.cfg, "max_app_queue_size", None),

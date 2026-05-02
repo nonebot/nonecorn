@@ -83,7 +83,7 @@ class Config:
     h2_max_concurrent_streams = 100
     h2_max_header_list_size = 2**16
     h2_max_inbound_frame_size = 2**14 * OCTETS
-    handle_ws_ping: bool = False
+    handle_ws_ping: bool = True
     include_date_header = True
     include_server_header = True
     keep_alive_timeout = 5 * SECONDS
